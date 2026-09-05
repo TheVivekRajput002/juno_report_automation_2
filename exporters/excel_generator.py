@@ -110,59 +110,105 @@ class ExcelReportGenerator:
             cell.alignment = align_center
             cell.border = border_all
 
-        def to_pct(val: float) -> float:
-            """Safely normalizes percentage values for Excel 0.00% formatting."""
+        def fmt_pct(val: float) -> str:
+            """Formats percentage values (0-100 scale or 0-1 scale) as 'X.XX%' string."""
             if not val:
-                return 0.0
+                return "0.00%"
             v = float(val)
-            if v > 1.0:
-                return v / 100.0
-            return v
+            if 0 < v <= 1.0:
+                v = v * 100.0
+            return f"{v:.2f}%"
 
-        # Row Definitions: (Line Item Name, is_highlighted, is_percentage, is_decimal, is_integer)
+        # Calculate Z+S combined metrics
+        if swiggy_metrics:
+            zs_orders = zomato_metrics.orders + swiggy_metrics.orders
+            zs_subtotal = zomato_metrics.subtotal + swiggy_metrics.subtotal
+            zs_total_discount = zomato_metrics.total_discount + swiggy_metrics.total_discount
+            zs_sales_after_discount = round(zs_subtotal - zs_total_discount, 2)
+            zs_net_order_value = round(zs_sales_after_discount / zs_orders, 2) if zs_orders > 0 else 0.0
+            zs_packaging = zomato_metrics.packaging_charges + swiggy_metrics.packaging_charges
+            zs_commission = zomato_metrics.commission + swiggy_metrics.commission
+            zs_ads = zomato_metrics.ads + swiggy_metrics.ads
+            zs_cash_in_bank = zomato_metrics.cash_in_bank + swiggy_metrics.cash_in_bank
+            zs_discount_pct = fmt_pct((zs_total_discount / zs_subtotal * 100) if zs_subtotal > 0 else 0.0)
+            zs_commission_pct = fmt_pct((zs_commission / zs_sales_after_discount * 100) if zs_sales_after_discount > 0 else 0.0)
+            zs_ads_pct = fmt_pct((zs_ads / zs_subtotal * 100) if zs_subtotal > 0 else 0.0)
+            zs_payout_pct = fmt_pct((zs_cash_in_bank / zs_subtotal * 100) if zs_subtotal > 0 else 0.0)
+            zs_visibility = fmt_pct(zomato_metrics.visibility)
+            zs_kpt = round((zomato_metrics.kpt + swiggy_metrics.kpt) / 2, 1) if (zomato_metrics.kpt > 0 and swiggy_metrics.kpt > 0) else (zomato_metrics.kpt or swiggy_metrics.kpt)
+            zs_impressions = zomato_metrics.impressions + swiggy_metrics.impressions
+            zs_i2m = fmt_pct(zomato_metrics.i2m)
+            zs_menu_opens = zomato_metrics.menu_opens + swiggy_metrics.menu_opens
+            zs_c2o = fmt_pct(zomato_metrics.c2o)
+            zs_m2o = fmt_pct(zomato_metrics.m2o)
+            zs_mx_rejections = zomato_metrics.mx_rejections + swiggy_metrics.mx_rejections
+        else:
+            zs_orders = zomato_metrics.orders
+            zs_subtotal = zomato_metrics.subtotal
+            zs_total_discount = zomato_metrics.total_discount
+            zs_sales_after_discount = zomato_metrics.sales_after_discount
+            zs_net_order_value = zomato_metrics.net_order_value
+            zs_packaging = zomato_metrics.packaging_charges
+            zs_commission = zomato_metrics.commission
+            zs_ads = zomato_metrics.ads
+            zs_cash_in_bank = zomato_metrics.cash_in_bank
+            zs_discount_pct = fmt_pct(zomato_metrics.discount_pct)
+            zs_commission_pct = fmt_pct(zomato_metrics.commission_pct)
+            zs_ads_pct = fmt_pct(zomato_metrics.ads_pct)
+            zs_payout_pct = fmt_pct(zomato_metrics.payout_pct)
+            zs_visibility = fmt_pct(zomato_metrics.visibility)
+            zs_kpt = zomato_metrics.kpt
+            zs_impressions = zomato_metrics.impressions
+            zs_i2m = fmt_pct(zomato_metrics.i2m)
+            zs_menu_opens = zomato_metrics.menu_opens
+            zs_c2o = fmt_pct(zomato_metrics.c2o)
+            zs_m2o = fmt_pct(zomato_metrics.m2o)
+            zs_mx_rejections = zomato_metrics.mx_rejections
+
+        # Row Definitions: (Line Item Name, type, z_val, zs_val, highlight, bold)
         rows_config = [
             # 5
-            {"name": "Orders", "type": "int", "z_val": zomato_metrics.orders, "formula_zs": "=B5+C5", "highlight": False, "bold": False},
+            {"name": "Orders", "type": "int", "z_val": zomato_metrics.orders, "zs_val": zs_orders, "highlight": False, "bold": False},
             # 6
-            {"name": "Subtotal", "type": "num", "z_val": zomato_metrics.subtotal, "formula_zs": "=B6+C6", "highlight": False, "bold": False},
+            {"name": "Subtotal", "type": "num", "z_val": zomato_metrics.subtotal, "zs_val": zs_subtotal, "highlight": False, "bold": False},
             # 7
-            {"name": "Total Discount", "type": "num", "z_val": zomato_metrics.total_discount, "formula_zs": "=B7+C7", "highlight": False, "bold": False},
+            {"name": "Total Discount", "type": "num", "z_val": zomato_metrics.total_discount, "zs_val": zs_total_discount, "highlight": False, "bold": False},
             # 8
-            {"name": "Sales after discount", "type": "num", "z_val": zomato_metrics.sales_after_discount, "formula_z": "=B6-B7", "formula_zs": "=B8+C8", "highlight": False, "bold": False},
+            {"name": "Sales after discount", "type": "num", "z_val": zomato_metrics.sales_after_discount, "zs_val": zs_sales_after_discount, "highlight": False, "bold": False},
             # 9
-            {"name": "Net order value", "type": "int", "z_val": zomato_metrics.net_order_value, "formula_z": "=IF(B5>0,B8/B5,0)", "formula_zs": "=IF((B5+C5)>0,D8/D5,0)", "highlight": False, "bold": False},
+            {"name": "Net order value", "type": "num", "z_val": zomato_metrics.net_order_value, "zs_val": zs_net_order_value, "highlight": False, "bold": False},
             # 10
-            {"name": "Packaging Charges", "type": "num", "z_val": zomato_metrics.packaging_charges, "formula_zs": "=B10+C10", "highlight": False, "bold": False},
+            {"name": "Packaging Charges", "type": "num", "z_val": zomato_metrics.packaging_charges, "zs_val": zs_packaging, "highlight": False, "bold": False},
             # 11
-            {"name": "Commission", "type": "num", "z_val": zomato_metrics.commission, "formula_zs": "=B11+C11", "highlight": False, "bold": False},
+            {"name": "Commission", "type": "num", "z_val": zomato_metrics.commission, "zs_val": zs_commission, "highlight": False, "bold": False},
             # 12
-            {"name": "ads", "type": "num", "z_val": zomato_metrics.ads, "formula_zs": "=B12+C12", "highlight": False, "bold": False},
+            {"name": "ads", "type": "num", "z_val": zomato_metrics.ads, "zs_val": zs_ads, "highlight": False, "bold": False},
             # 13: Cash in Bank (Highlighted)
-            {"name": "Cash in Bank", "type": "num", "z_val": zomato_metrics.cash_in_bank, "formula_zs": "=B13+C13", "highlight": True, "bold": True},
+            {"name": "Cash in Bank", "type": "num", "z_val": zomato_metrics.cash_in_bank, "zs_val": zs_cash_in_bank, "highlight": True, "bold": True},
             # 14
-            {"name": "Discount %", "type": "pct", "z_val": to_pct(zomato_metrics.discount_pct), "formula_z": "=IF(B6>0,B7/B6,0)", "formula_zs": "=IF(D6>0,D7/D6,0)", "highlight": False, "bold": False},
+            {"name": "Discount %", "type": "str", "z_val": fmt_pct(zomato_metrics.discount_pct), "zs_val": zs_discount_pct, "highlight": False, "bold": False},
             # 15
-            {"name": "Commission %", "type": "pct", "z_val": to_pct(zomato_metrics.commission_pct), "formula_z": "=IF(B8>0,B11/B8,0)", "formula_zs": "=IF(D8>0,D11/D8,0)", "highlight": False, "bold": False},
+            {"name": "Commission %", "type": "str", "z_val": fmt_pct(zomato_metrics.commission_pct), "zs_val": zs_commission_pct, "highlight": False, "bold": False},
             # 16
-            {"name": "Ads %", "type": "pct", "z_val": to_pct(zomato_metrics.ads_pct), "formula_z": "=IF(B6>0,B12/B6,0)", "formula_zs": "=IF(D6>0,D12/D6,0)", "highlight": False, "bold": False},
+            {"name": "Ads %", "type": "str", "z_val": fmt_pct(zomato_metrics.ads_pct), "zs_val": zs_ads_pct, "highlight": False, "bold": False},
             # 17: Payout % (Highlighted)
-            {"name": "Payout %", "type": "pct", "z_val": to_pct(zomato_metrics.payout_pct), "formula_z": "=IF(B6>0,B13/B6,0)", "formula_zs": "=IF(D6>0,D13/D6,0)", "highlight": True, "bold": True},
+            {"name": "Payout %", "type": "str", "z_val": fmt_pct(zomato_metrics.payout_pct), "zs_val": zs_payout_pct, "highlight": True, "bold": True},
             # 18
-            {"name": "Visibility", "type": "str", "z_val": f"{zomato_metrics.visibility:.2f}%", "formula_zs": f"{zomato_metrics.visibility:.2f}%", "highlight": False, "bold": False},
+            {"name": "Visibility", "type": "str", "z_val": fmt_pct(zomato_metrics.visibility), "zs_val": zs_visibility, "highlight": False, "bold": False},
             # 19
-            {"name": "KPT", "type": "int", "z_val": zomato_metrics.kpt, "formula_zs": "=IF(COUNT(B19:C19)>0,AVERAGE(B19:C19),0)", "highlight": False, "bold": False},
+            {"name": "KPT", "type": "int", "z_val": zomato_metrics.kpt, "zs_val": zs_kpt, "highlight": False, "bold": False},
             # 20
-            {"name": "Impressions", "type": "num", "z_val": zomato_metrics.impressions, "formula_zs": "=B20+C20", "highlight": False, "bold": False},
+            {"name": "Impressions", "type": "num", "z_val": zomato_metrics.impressions, "zs_val": zs_impressions, "highlight": False, "bold": False},
             # 21
-            {"name": "I2M", "type": "str", "z_val": f"{zomato_metrics.i2m:.2f}%", "formula_zs": f"{zomato_metrics.i2m:.2f}%", "highlight": False, "bold": False},
+            {"name": "I2M", "type": "str", "z_val": fmt_pct(zomato_metrics.i2m), "zs_val": zs_i2m, "highlight": False, "bold": False},
             # 22
-            {"name": "Menu Opens", "type": "num", "z_val": zomato_metrics.menu_opens, "formula_zs": "=B22+C22", "highlight": False, "bold": False},
+            {"name": "Menu Opens", "type": "num", "z_val": zomato_metrics.menu_opens, "zs_val": zs_menu_opens, "highlight": False, "bold": False},
             # 23
-            {"name": "C2O", "type": "str", "z_val": f"{zomato_metrics.c2o:.2f}%", "formula_zs": f"{zomato_metrics.c2o:.2f}%", "highlight": False, "bold": False},
+            {"name": "C2O", "type": "str", "z_val": fmt_pct(zomato_metrics.c2o), "zs_val": zs_c2o, "highlight": False, "bold": False},
             # 24
-            {"name": "M2O", "type": "str", "z_val": f"{zomato_metrics.m2o:.2f}%", "formula_zs": f"{zomato_metrics.m2o:.2f}%", "highlight": False, "bold": True},
+            {"name": "M2O", "type": "str", "z_val": fmt_pct(zomato_metrics.m2o), "zs_val": zs_m2o, "highlight": False, "bold": True},
             # 25
-            {"name": "Mx Rejections", "type": "int", "z_val": zomato_metrics.mx_rejections, "formula_zs": "=B25+C25", "highlight": False, "bold": False},
+            {"name": "Mx Rejections", "type": "int", "z_val": zomato_metrics.mx_rejections, "zs_val": zs_mx_rejections, "highlight": False, "bold": False},
         ]
 
         # Populate rows
@@ -175,8 +221,8 @@ class ExcelReportGenerator:
             if item["highlight"]:
                 cell_a.fill = fill_highlight
 
-            # Zomato value (Col B)
-            cell_b = ws.cell(row=idx, column=2, value=item.get("formula_z") or item["z_val"])
+            # Zomato value (Col B) - Direct value
+            cell_b = ws.cell(row=idx, column=2, value=item["z_val"])
             cell_b.font = font_bold if item["bold"] else font_regular
             cell_b.alignment = align_center
             cell_b.border = border_all
@@ -186,7 +232,6 @@ class ExcelReportGenerator:
             # Swiggy value (Col C - placeholder / future support)
             swiggy_val = 0
             if swiggy_metrics:
-                # Map swiggy value if available
                 swiggy_val = getattr(swiggy_metrics, item["name"].lower().replace(" ", "_"), 0)
             cell_c = ws.cell(row=idx, column=3, value=swiggy_val if swiggy_metrics else "")
             cell_c.font = font_bold if item["bold"] else font_regular
@@ -195,8 +240,8 @@ class ExcelReportGenerator:
             if item["highlight"]:
                 cell_c.fill = fill_highlight
 
-            # Z+S value (Col D)
-            cell_d = ws.cell(row=idx, column=4, value=item["formula_zs"])
+            # Z+S value (Col D) - Direct value
+            cell_d = ws.cell(row=idx, column=4, value=item["zs_val"])
             cell_d.font = font_bold if item["bold"] else font_regular
             cell_d.alignment = align_center
             cell_d.border = border_all
@@ -211,10 +256,8 @@ class ExcelReportGenerator:
                     c.number_format = "#,##0"
                 elif format_type == "num":
                     c.number_format = "#,##0"
-                elif format_type == "pct":
-                    c.number_format = "0.00%"
-                elif format_type == "pct_int":
-                    c.number_format = "0%"
+                elif format_type == "str":
+                    c.number_format = "@"
 
         # Set Column Widths
         column_widths = {

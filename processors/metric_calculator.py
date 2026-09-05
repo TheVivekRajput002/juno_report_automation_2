@@ -110,7 +110,7 @@ class MetricCalculator:
         sales_after_discount = round(subtotal - total_discount, 2)
 
         # Net order value = formula: sales after discount divided by orders
-        net_order_value = (sales_after_discount / orders) if orders > 0 else 0.0
+        net_order_value = round(sales_after_discount / orders, 2) if orders > 0 else 0.0
 
         packaging_charges = clean_number(raw.get("packaging_charges", 0))
 

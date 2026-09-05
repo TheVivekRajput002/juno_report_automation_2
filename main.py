@@ -49,12 +49,15 @@ def run_automation(
     restaurant_id: Optional[str] = None
 ):
     """Executes the complete scraper, calculator, and report generator pipeline."""
-    target_display_name = restaurant_name or DEFAULT_RESTAURANT_NAME
-    target_display_id = restaurant_id or DEFAULT_RESTAURANT_ID
+    target_display_name = restaurant_name or (f"ID: {restaurant_id}" if restaurant_id else DEFAULT_RESTAURANT_NAME)
+    target_display_id = restaurant_id or (DEFAULT_RESTAURANT_ID if not restaurant_name else "")
 
     print("=" * 60)
     print(f"  ZOMATO REPORT AUTOMATION: {date_label}")
-    print(f"  Target Restaurant: {target_display_name} (ID: {target_display_id})")
+    if target_display_id and target_display_name != f"ID: {restaurant_id}":
+        print(f"  Target Restaurant: {target_display_name} (ID: {target_display_id})")
+    else:
+        print(f"  Target Restaurant: {target_display_name}")
     print("=" * 60)
 
     with BrowserManager(headless=False) as bm:
@@ -78,7 +81,7 @@ def run_automation(
             restaurant_id=restaurant_id
         )
 
-        res_name = extracted_data.get("restaurant_name") or restaurant_name or DEFAULT_RESTAURANT_NAME
+        res_name = extracted_data.get("restaurant_name") or restaurant_name or (f"Restaurant_{restaurant_id}" if restaurant_id else DEFAULT_RESTAURANT_NAME)
         res_id = extracted_data.get("restaurant_id") or restaurant_id or DEFAULT_RESTAURANT_ID
 
         print("\n[*] Extracted Raw Metrics:")

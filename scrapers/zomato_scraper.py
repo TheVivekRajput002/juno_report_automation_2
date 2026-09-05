@@ -1,7 +1,7 @@
 import time
 import re
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 from playwright.sync_api import Page, Locator
 from config import (
     ZOMATO_BASE_URL,
@@ -26,7 +26,36 @@ class ZomatoScraper:
     def __init__(self, page: Page):
         self.page = page
         self.intercepted_data: Dict[str, Any] = {}
+        self.extracted_restaurant_name: Optional[str] = None
+        self.extracted_restaurant_id: Optional[str] = None
         self._setup_network_interception()
+
+    @staticmethod
+    def _parse_outlet_label(text: str) -> Tuple[Optional[str], Optional[str]]:
+        """Parses restaurant name and ID from outlet labels like 'The Spice Meridian (Id: 22663260)' or 'The Paneer Story\nShankar Nagar, Raipur | ID: 22749423'."""
+        if not text:
+            return None, None
+
+        # Extract ID first
+        res_id = None
+        m_id = re.search(r"\b(?:[Ii][Dd]|Id|ID)[:\s#]+(\d{6,10})", text)
+        if m_id:
+            res_id = m_id.group(1).strip()
+
+        # Extract clean name (first line or before address / pipe / ID)
+        first_line = text.strip().split("\n")[0].strip()
+        clean = re.sub(r"\s*\(?\b[Ii][Dd]\b:?\s*\d+\)?.*$", "", first_line, flags=re.I)
+        clean = re.sub(r"\s*\|.*$", "", clean).strip()
+        clean = re.sub(r"\s*-\s*\d+.*$", "", clean).strip()
+        if clean.endswith("(") or clean.endswith("-"):
+            clean = clean[:-1].strip()
+
+        name = clean if clean and not clean.isdigit() else None
+        if not res_id and text.strip().isdigit():
+            res_id = text.strip()
+
+        return name, res_id
+
 
     def _setup_network_interception(self):
         """Intercepts internal JSON responses for reporting, payouts, and settlements."""
@@ -168,7 +197,8 @@ class ZomatoScraper:
         """
         target = (str(restaurant_name_or_id).strip() if restaurant_name_or_id else DEFAULT_RESTAURANT_ID).lower()
         target_name = (str(restaurant_name_or_id).strip() if restaurant_name_or_id else DEFAULT_RESTAURANT_NAME).lower()
-        print(f"[*] Selecting restaurant outlet for target: '{restaurant_name_or_id or DEFAULT_RESTAURANT_NAME}'...")
+        display_target = restaurant_name_or_id or f"{DEFAULT_RESTAURANT_NAME} ({DEFAULT_RESTAURANT_ID})"
+        print(f"[*] Selecting restaurant outlet for target: '{display_target}'...")
 
         try:
             # Check if modal/dialog is already open
@@ -221,6 +251,11 @@ class ZomatoScraper:
                     # If already selected this specific restaurant ID and not 'All outlets'
                     if (target in btn_text.lower() or target_name in btn_text.lower()) and "all outlet" not in btn_text.lower():
                         print(f"[+] Restaurant '{btn_text}' is already active.")
+                        name, res_id = self._parse_outlet_label(btn_text)
+                        if name:
+                            self.extracted_restaurant_name = name
+                        if res_id:
+                            self.extracted_restaurant_id = res_id
                         return True
 
                     outlet_btn.click()
@@ -300,26 +335,39 @@ class ZomatoScraper:
                 payout_item = self._find_clickable(payout_item_selectors, timeout_ms=2000)
                 if payout_item:
                     try:
+                        payout_text = payout_item.inner_text().strip()
                         payout_item.click()
-                        print(f"[+] Clicked outlet radio option for ID: {target}")
+                        print(f"[+] Clicked outlet radio option: '{payout_text or target}'")
+                        name, res_id = self._parse_outlet_label(payout_text)
+                        if name:
+                            self.extracted_restaurant_name = name
+                        if res_id:
+                            self.extracted_restaurant_id = res_id
                         self.page.wait_for_timeout(800)
                     except Exception as e:
                         print(f"[!] Error clicking Payouts outlet radio: {e}")
                 else:
                     # JS fallback for Payouts dialog
-                    self.page.evaluate("""({ target, targetName }) => {
+                    clicked_payout_text = self.page.evaluate("""({ target, targetName }) => {
                         const dialog = document.querySelector('div[role="dialog"]') || document.body;
                         const labels = Array.from(dialog.querySelectorAll('label, input[type="radio"], div.border-b'));
                         for (const l of labels) {
                             const txt = (l.innerText || '' + l.id || '').toLowerCase();
                             if (txt.includes(target) || txt.includes(targetName) || l.htmlFor === target || l.id === target) {
                                 l.click();
-                                return true;
+                                return l.innerText ? l.innerText.trim() : target;
                             }
                         }
-                        return false;
+                        return null;
                     }""", {"target": target, "targetName": target_name})
-                    self.page.wait_for_timeout(800)
+                    if clicked_payout_text:
+                        print(f"[+] Clicked outlet radio via JS evaluation: '{clicked_payout_text}'")
+                        name, res_id = self._parse_outlet_label(clicked_payout_text)
+                        if name:
+                            self.extracted_restaurant_name = name
+                        if res_id:
+                            self.extracted_restaurant_id = res_id
+                        self.page.wait_for_timeout(800)
 
                 # Click Apply button in Payouts dialog
                 apply_payout_selectors = [
@@ -386,6 +434,21 @@ class ZomatoScraper:
                 }""")
                 self.page.wait_for_timeout(600)
 
+            # Clear previous selections if 'Clear all' / 'Clear' is present in modal
+            self.page.evaluate("""() => {
+                const modal = document.querySelector('#modal') || document.body;
+                const buttons = Array.from(modal.querySelectorAll('button, span, a, div[role="button"]'));
+                for (const b of buttons) {
+                    const txt = (b.innerText || '').trim().toLowerCase();
+                    if (txt === 'clear all' || txt === 'clear filters' || txt === 'deselect all') {
+                        b.click();
+                        return true;
+                    }
+                }
+                return false;
+            }""")
+            self.page.wait_for_timeout(400)
+
             # Search box in Reporting modal
             search_query = str(restaurant_name_or_id or DEFAULT_RESTAURANT_ID).strip()
             search_box = self._find_clickable([
@@ -431,6 +494,11 @@ class ZomatoScraper:
                     elem_text = target_elem.inner_text().strip()
                     target_elem.click()
                     print(f"[+] Clicked matching outlet option: '{elem_text}'")
+                    name, res_id = self._parse_outlet_label(elem_text)
+                    if name:
+                        self.extracted_restaurant_name = name
+                    if res_id:
+                        self.extracted_restaurant_id = res_id
                     option_found = True
                     self.page.wait_for_timeout(800)
                 except Exception as e:
@@ -451,6 +519,11 @@ class ZomatoScraper:
                 }""", {"target": target, "targetName": target_name})
                 if clicked_js:
                     print(f"[+] Clicked matching outlet via JS evaluation: '{clicked_js}'")
+                    name, res_id = self._parse_outlet_label(clicked_js)
+                    if name:
+                        self.extracted_restaurant_name = name
+                    if res_id:
+                        self.extracted_restaurant_id = res_id
                     option_found = True
                     self.page.wait_for_timeout(800)
 
@@ -489,8 +562,6 @@ class ZomatoScraper:
                 if applied_js:
                     print("[+] Clicked 'Apply' via JS evaluation.")
                     self.page.wait_for_timeout(4000)
-                    return True
-                else:
                     print("[!] Apply button not found in modal.")
 
         except Exception as e:
@@ -1017,47 +1088,70 @@ class ZomatoScraper:
             if m_subtotal:
                 data["subtotal"] = clean_number(m_subtotal.group(1))
 
-            # 4. Total Discounts (sum of all line items containing "discount" under Net Order Value A block)
-            discount_vals = []
+            # 4. Total Discounts (hardcoded formula as requested):
+            #    Total Discount = Restaurant discount (Promos)
+            #                   + Restaurant discount (Flat offs, Freebies, Gold, relisted orders and others)
+            #                   + Delivery charge discount (0 if not exists)
             lines = [l.strip() for l in combined_text.splitlines() if l.strip()]
-            for i, line in enumerate(lines):
-                l_lower = line.lower().strip()
-                if "restaurant discount" in l_lower or (("promos" in l_lower or "flat offs" in l_lower or "gold" in l_lower or "freebies" in l_lower) and "discount" in l_lower):
-                    # Look for negative amount with currency symbol or last currency amount on line
-                    m_neg = re.findall(r'[-–—]\s*₹?\s*([\d,]+(?:\.\d+)?)', line)
-                    if m_neg:
-                        val = abs(clean_number(m_neg[-1]))
-                        if val > 0:
-                            discount_vals.append(val)
-                    else:
-                        # Check next 1-2 lines for - ₹ amount
-                        for j in range(i + 1, min(i + 3, len(lines))):
+
+            def get_item_discount(keywords: List[str]) -> float:
+                for idx, l in enumerate(lines):
+                    l_low = l.lower().strip()
+                    if all(kw.lower() in l_low for kw in keywords):
+                        # Check for - ₹ amount on the same line
+                        m_neg = re.findall(r'[-–—]\s*₹?\s*([\d,]+(?:\.\d+)?)', l)
+                        if m_neg:
+                            val = abs(clean_number(m_neg[-1]))
+                            if val > 0:
+                                return val
+                        # Check next 1-2 lines for ₹ amount
+                        for j in range(idx + 1, min(idx + 3, len(lines))):
                             next_l = lines[j]
-                            if any(k in next_l.lower() for k in ["gst", "subtotal", "net order", "additions", "packaging", "order level"]):
+                            if any(k in next_l.lower() for k in ["gst", "subtotal", "net order", "additions", "packaging", "order level", "delivery charge", "restaurant discount"]):
                                 break
                             m_next = re.search(r'[-–—]?\s*₹\s*([\d,]+(?:\.\d+)?)', next_l)
                             if m_next:
                                 val = abs(clean_number(m_next.group(1)))
                                 if val > 0:
-                                    discount_vals.append(val)
+                                    return val
                                 break
+                return 0.0
 
-            # Filter out any stray percentage match (e.g. 30.0 from 30%)
-            discount_vals = [v for v in discount_vals if v != 30.0 or (data.get("subtotal") and data["subtotal"] < 100)]
+            # Item 1: Restaurant discount (Promos)
+            disc_promos = get_item_discount(["restaurant discount", "promos"])
+            if disc_promos == 0.0:
+                disc_promos = get_item_discount(["promos"])
+            if disc_promos == 0.0:
+                m_p = re.search(r"(?:Restaurant discount\s*\(Promos\)|Promos(?:\s*discount)?)\s*[:\n\r]*\s*[-–—]?\s*₹?\s*([\d,]+(?:\.\d+)?)", combined_text, re.I)
+                if m_p:
+                    disc_promos = abs(clean_number(m_p.group(1)))
 
-            # Check identity formula: Total Discount = Subtotal + Total GST collected from customers - Net order value (A)
-            m_cgst = re.search(r"Total GST collected from customers\s*[:\n\r]*\s*₹?\s*([\d,]+(?:\.\d+)?)", combined_text, re.I)
-            cust_gst = clean_number(m_cgst.group(1)) if m_cgst else 0.0
-            formula_discount = 0.0
-            if cust_gst and data.get("subtotal") and data.get("net_order_value_amount"):
-                formula_discount = round(data["subtotal"] + cust_gst - data["net_order_value_amount"], 2)
+            # Item 2: Restaurant discount (Flat offs, Freebies, Gold, relisted orders and others)
+            disc_flat_offs = get_item_discount(["flat offs"])
+            if disc_flat_offs == 0.0:
+                disc_flat_offs = get_item_discount(["freebies"])
+            if disc_flat_offs == 0.0:
+                disc_flat_offs = get_item_discount(["gold", "discount"])
+            if disc_flat_offs == 0.0:
+                disc_flat_offs = get_item_discount(["relisted"])
+            if disc_flat_offs == 0.0:
+                m_f = re.search(r"(?:Restaurant discount\s*\([^)]*(?:flat off|freebie|gold|relisted)[^)]*\)|Flat offs[^\n\r]*?discount)\s*[:\n\r]*\s*[-–—]?\s*₹?\s*([\d,]+(?:\.\d+)?)", combined_text, re.I)
+                if m_f:
+                    disc_flat_offs = abs(clean_number(m_f.group(1)))
 
-            if discount_vals and sum(discount_vals) > 50:
-                data["total_discount"] = round(sum(discount_vals), 2)
-            elif formula_discount > 0:
-                data["total_discount"] = formula_discount
-            elif discount_vals:
-                data["total_discount"] = round(sum(discount_vals), 2)
+            # Item 3: Delivery charge discount (0 if not exists)
+            disc_delivery = get_item_discount(["delivery", "discount"])
+            if disc_delivery == 0.0:
+                m_d = re.search(r"(?:Delivery charge discount|Delivery fee discount|Delivery discount)\s*[:\n\r]*\s*[-–—]?\s*₹?\s*([\d,]+(?:\.\d+)?)", combined_text, re.I)
+                if m_d:
+                    disc_delivery = abs(clean_number(m_d.group(1)))
+
+            total_discount = round(disc_promos + disc_flat_offs + disc_delivery, 2)
+            data["discount_promos"] = disc_promos
+            data["discount_flat_offs"] = disc_flat_offs
+            data["discount_delivery"] = disc_delivery
+            data["total_discount"] = total_discount
+            print(f"[*] Discounts: Promos = ₹{disc_promos}, Flat offs/Freebies/Gold = ₹{disc_flat_offs}, Delivery = ₹{disc_delivery} -> Total Discount = ₹{total_discount}")
 
             # 5. Packaging Charges
             m_pack = re.search(r"(?:Packaging Charges?|Packaging Fee)\s*[:\n\r]*\s*₹?\s*([\d,]+(?:\.\d+)?)", combined_text, re.I)
@@ -1259,8 +1353,15 @@ class ZomatoScraper:
         combined.update(reporting_data)
         combined.update(payout_data)
         combined.update(res_info)
-        if restaurant_id:
-            combined["restaurant_id"] = restaurant_id
-        if restaurant_name and not combined.get("restaurant_name"):
+
+        if self.extracted_restaurant_name:
+            combined["restaurant_name"] = self.extracted_restaurant_name
+        elif restaurant_name:
             combined["restaurant_name"] = restaurant_name
+
+        if self.extracted_restaurant_id:
+            combined["restaurant_id"] = self.extracted_restaurant_id
+        elif restaurant_id:
+            combined["restaurant_id"] = restaurant_id
+
         return combined
