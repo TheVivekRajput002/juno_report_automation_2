@@ -1,0 +1,18 @@
+# Chrome browser data & sessions (CRITICAL)
+.user_data/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Generated reports & outputs
+reports/*.xlsx
+!reports/.gitkeep
+
+# Environment variables & secrets
+.env
+*.log
