@@ -23,12 +23,13 @@ class ZomatoScraper:
          Order level deductions (C), Tax deductions (D), Investments in growth (E), Est payout.
     """
 
-    def __init__(self, page: Page):
+    def __init__(self, page: Optional[Page] = None):
         self.page = page
         self.intercepted_data: Dict[str, Any] = {}
         self.extracted_restaurant_name: Optional[str] = None
         self.extracted_restaurant_id: Optional[str] = None
-        self._setup_network_interception()
+        if self.page:
+            self._setup_network_interception()
 
     @staticmethod
     def _parse_outlet_label(text: str) -> Tuple[Optional[str], Optional[str]]:
@@ -562,12 +563,33 @@ class ZomatoScraper:
                 if applied_js:
                     print("[+] Clicked 'Apply' via JS evaluation.")
                     self.page.wait_for_timeout(4000)
+                    return True
+                else:
                     print("[!] Apply button not found in modal.")
 
         except Exception as e:
             print(f"[!] Error in outlet selection: {e}")
 
         return False
+
+    def _close_all_drawers_and_modals(self):
+        """Closes any open side-drawers, modals, or dialog backdrops."""
+        try:
+            self.page.keyboard.press("Escape")
+            self.page.wait_for_timeout(300)
+            for f in [self.page.main_frame] + self.page.frames:
+                try:
+                    f.evaluate("""() => {
+                        const closeBtns = Array.from(document.querySelectorAll('[aria-label="close"], [aria-label="Close"], button[class*="close"], [class*="close-icon"], [class*="CloseIcon"], svg[class*="close"]'));
+                        for (const b of closeBtns) {
+                            try { b.click(); } catch(e) {}
+                        }
+                    }""")
+                except Exception:
+                    pass
+            self.page.wait_for_timeout(300)
+        except Exception:
+            pass
 
     # -------------------------------------------------------------
     # 1. REPORTING TAB EXTRACTION (BUSINESS REPORTS MATRIX TABLE)
@@ -585,22 +607,14 @@ class ZomatoScraper:
         print("-" * 50)
 
         try:
-            # Step 1: Go to Reporting page
-            nav_selectors = [
-                "//span[normalize-space()='Reporting']",
-                "//a[contains(@href, 'reporting')]",
-                "//button[contains(., 'Reporting')]",
-                "//div[@role='button'][contains(., 'Reporting')]",
-            ]
-            reporting_elem = self._find_clickable(nav_selectors, timeout_ms=3000)
-            if reporting_elem:
-                reporting_elem.click()
-                self.page.wait_for_timeout(3000)
-            else:
-                self.page.goto(ZOMATO_REPORTS_URL, wait_until="domcontentloaded", timeout=30000)
-                self.page.wait_for_timeout(3000)
+            self._close_all_drawers_and_modals()
 
-            # Step 2: Go to Business reports section
+            # Always navigate directly to Reporting page URL to ensure fresh and clean state
+            print(f"[*] Navigating directly to Reporting URL: {ZOMATO_REPORTS_URL}")
+            self.page.goto(ZOMATO_REPORTS_URL, wait_until="domcontentloaded", timeout=30000)
+            self.page.wait_for_timeout(3000)
+
+            # Step 2: Ensure Business reports section is active
             biz_tab_selectors = [
                 "//span[contains(text(), 'Business reports')]",
                 "//button[contains(., 'Business reports')]",
@@ -610,35 +624,44 @@ class ZomatoScraper:
             ]
             biz_tab = self._find_clickable(biz_tab_selectors, timeout_ms=3000)
             if biz_tab:
-                biz_tab.click()
-                print("[+] Clicked 'Business reports' tab.")
-                self.page.wait_for_timeout(3000)
+                try:
+                    biz_tab.click()
+                    print("[+] Clicked 'Business reports' tab.")
+                    self.page.wait_for_timeout(3000)
+                except Exception:
+                    pass
 
             # Step 3: Select the outlet (restaurant)
             self.select_restaurant_outlet(restaurant_id or restaurant_name)
-            self.page.wait_for_timeout(2500)
+            self.page.wait_for_timeout(3000)
 
             # Step 4: Select Weekly view
             self.select_weekly_view()
-            self.page.wait_for_timeout(2500)
+            self.page.wait_for_timeout(3000)
 
-            # Step 5: Wait for table/data to load across all frames (poll up to 10 seconds)
-            for _ in range(10):
-                found = False
+            # Step 5: Wait for actual table rows to render (poll up to 12 seconds)
+            for _ in range(12):
+                has_table_rows = False
                 for f in self.page.frames:
                     try:
-                        f_text = f.evaluate("() => document.body ? document.body.innerText.toLowerCase() : ''")
-                        if any(k in f_text for k in ["online %", "impressions", "customer funnel", "sales overview", "delivered orders", "week"]):
-                            found = True
+                        row_cnt = f.evaluate("""() => {
+                            const trs = document.querySelectorAll('table tbody tr, table tr, [role="table"] [role="row"], [role="grid"] [role="row"]');
+                            return trs ? trs.length : 0;
+                        }""")
+                        if row_cnt >= 3:
+                            has_table_rows = True
                             break
                     except Exception:
                         pass
-                if found:
+                if has_table_rows:
                     break
                 self.page.wait_for_timeout(1000)
 
             # Step 5b: Expand collapsible row chevrons (e.g. Menu to order -> Cart to order)
             self._expand_reporting_table_accordions()
+
+            # Step 5c: Scroll table horizontally to reveal older columns (e.g. 10-16 Aug)
+            self._scroll_reporting_table_to_reveal_columns()
 
             # Step 6: Extract table headers and cells via DOM traversal across all frames
             table_data = {"headers": [], "rows": [], "rawText": ""}
@@ -652,38 +675,60 @@ class ZomatoScraper:
                             rawText: document.body ? document.body.innerText : ''
                         };
 
+                        // Strategy 1: Look for table or grid elements
                         const tables = document.querySelectorAll('table, [role="table"], [role="grid"]');
                         for (const t of tables) {
-                            // Extract headers from thead
-                            const ths = Array.from(t.querySelectorAll('thead th, thead [role="columnheader"]')).map(el => el.innerText.trim());
+                            // Find the header row in the table
+                            let ths = [];
+                            const theadRow = t.querySelector('thead tr, tr:first-child');
+                            if (theadRow) {
+                                ths = Array.from(theadRow.querySelectorAll('th, td, [role="columnheader"]')).map(el => (el.innerText || '').trim().replace(/\\s+/g, ' '));
+                            }
+                            if (ths.length === 0) {
+                                ths = Array.from(t.querySelectorAll('th, [role="columnheader"]')).map(el => (el.innerText || '').trim().replace(/\\s+/g, ' '));
+                            }
                             if (ths.length > result.headers.length) {
                                 result.headers = ths;
                             }
-                            if (result.headers.length === 0) {
-                                const firstRow = t.querySelector('tr');
-                                if (firstRow) {
-                                    const fThs = Array.from(firstRow.querySelectorAll('th, td')).map(el => el.innerText.trim());
-                                    if (fThs.length > 2) {
-                                        result.headers = fThs;
-                                    }
-                                }
-                            }
-
-                            // Extract rows from tbody or trs
                             const trs = Array.from(t.querySelectorAll('tbody tr, tr[role="row"]'));
                             for (const row of trs) {
-                                const cells = Array.from(row.querySelectorAll('td, th, [role="cell"], [role="columnheader"]')).map(el => el.innerText.trim());
+                                const cellElements = Array.from(row.querySelectorAll('td, th, [role="cell"], [role="columnheader"]'));
+                                const cells = cellElements.map(el => (el.innerText || '').trim());
                                 if (cells.length > 1 && cells[0]) {
+                                    const headerMap = {};
+                                    for (let c = 0; c < ths.length && c < cells.length; c++) {
+                                        if (ths[c]) {
+                                            headerMap[ths[c]] = cells[c];
+                                        }
+                                    }
                                     result.rows.push({
                                         metricName: cells[0],
-                                        cells: cells
+                                        cells: cells,
+                                        headerMap: headerMap
                                     });
                                 }
                             }
                         }
 
-                        if (result.rows.length === 0 && document.body) {
-                            result.lines = document.body.innerText.split('\\n').map(l => l.trim()).filter(l => l.length > 0);
+                        // Strategy 2: Look for Div-based row structures (common in React/Emotion tables)
+                        if (result.rows.length === 0) {
+                            const potentialRows = Array.from(document.querySelectorAll('div[class*="row"], div[class*="Row"], div[class*="grid"], div[role="row"]'));
+                            for (const r of potentialRows) {
+                                const cells = Array.from(r.children).map(c => (c.innerText || '').trim()).filter(Boolean);
+                                if (cells.length >= 3) {
+                                    if (cells.some(c => c.toLowerCase().includes('week') || /\\d+\\s*-\\s*\\d+\\s*[A-Za-z]+/.test(c))) {
+                                        if (cells.length > result.headers.length) {
+                                            result.headers = cells;
+                                        }
+                                    } else if (cells[0] && cells[0].length < 40 && !cells[0].includes('\\n')) {
+                                        result.rows.push({
+                                            metricName: cells[0],
+                                            cells: cells,
+                                            headerMap: {}
+                                        });
+                                    }
+                                }
+                            }
                         }
 
                         return result;
@@ -699,34 +744,101 @@ class ZomatoScraper:
             rows = table_data.get("rows", [])
             body_text = table_data.get("rawText", "")
 
-            # If headers not extracted from <th>, try finding week labels in body_text
-            if not headers:
-                week_matches = re.findall(r"(?:Week\s*\d+.*?|\d+\s*-\s*\d+\s*[A-Za-z]+(?:\s*\d{4})?)", body_text)
+            # If 0 table rows found on first attempt, retry clicking Business reports and Weekly view
+            if len(rows) == 0:
+                print("[!] 0 table rows found on initial scan. Retrying tab navigation and table load...")
+                biz_tab = self._find_clickable(biz_tab_selectors, timeout_ms=2000)
+                if biz_tab:
+                    try:
+                        biz_tab.click()
+                        self.page.wait_for_timeout(2000)
+                    except Exception:
+                        pass
+                self.select_restaurant_outlet(restaurant_id or restaurant_name)
+                self.select_weekly_view()
+                self.page.wait_for_timeout(3000)
+                self._expand_reporting_table_accordions()
+                self._scroll_reporting_table_to_reveal_columns()
+
+                # Re-scan frames for table data
+                for f in self.page.frames:
+                    try:
+                        f_data = f.evaluate("""() => {
+                            const result = { headers: [], rows: [], rawText: document.body ? document.body.innerText : '' };
+                            const tables = document.querySelectorAll('table, [role="table"], [role="grid"]');
+                            for (const t of tables) {
+                                let ths = [];
+                                const theadRow = t.querySelector('thead tr, tr:first-child');
+                                if (theadRow) {
+                                    ths = Array.from(theadRow.querySelectorAll('th, td, [role="columnheader"]')).map(el => (el.innerText || '').trim().replace(/\\s+/g, ' '));
+                                }
+                                if (ths.length === 0) {
+                                    ths = Array.from(t.querySelectorAll('th, [role="columnheader"]')).map(el => (el.innerText || '').trim().replace(/\\s+/g, ' '));
+                                }
+                                if (ths.length > result.headers.length) {
+                                    result.headers = ths;
+                                }
+                                const trs = Array.from(t.querySelectorAll('tbody tr, tr[role="row"]'));
+                                for (const row of trs) {
+                                    const cellElements = Array.from(row.querySelectorAll('td, th, [role="cell"], [role="columnheader"]'));
+                                    const cells = cellElements.map(el => (el.innerText || '').trim());
+                                    if (cells.length > 1 && cells[0]) {
+                                        const headerMap = {};
+                                        for (let c = 0; c < ths.length && c < cells.length; c++) {
+                                            if (ths[c]) {
+                                                headerMap[ths[c]] = cells[c];
+                                            }
+                                        }
+                                        result.rows.push({
+                                            metricName: cells[0],
+                                            cells: cells,
+                                            headerMap: headerMap
+                                        });
+                                    }
+                                }
+                            }
+                            return result;
+                        }""")
+                        if len(f_data.get("rows", [])) > len(table_data.get("rows", [])):
+                            table_data = f_data
+                    except Exception:
+                        continue
+
+                headers = table_data.get("headers", [])
+                rows = table_data.get("rows", [])
+                body_text = table_data.get("rawText", "")
+
+            # If headers not extracted cleanly, scan text for week headers e.g. "Week 33 10 - 16 Aug 2026"
+            if not headers or len(headers) < 3:
+                week_matches = re.findall(r"(?:Week\s*\d+[\s\S]*?\d+\s*-\s*\d+\s*[A-Za-z]+(?:\s*\d{4})?|Week\s*\d+)", body_text)
                 if week_matches:
-                    headers = ["Metric", "Trend"] + week_matches
+                    headers = ["Metric", "Trend"] + [w.strip() for w in week_matches]
 
-            print(f"[*] Discovered {len(headers)} columns and {len(rows)} table rows.")
+            print(f"[*] Discovered {len(headers)} columns and {len(rows)} table rows in Reporting.")
+            if headers:
+                print(f"[*] Column Headers: {[h.replace(chr(10), ' ') for h in headers]}")
 
-            # 6. Find target column index
+            # 6. Find target column index for this date range
             target_col_idx = self._find_target_column_index(headers, start_date, end_date, date_label)
             header_name = headers[target_col_idx].replace("\n", " ") if target_col_idx < len(headers) else "N/A"
             print(f"[*] Target column index: {target_col_idx} (Header: '{header_name}')")
 
             # 7. Extract from structured rows
             if rows:
-                extracted = self._extract_metrics_from_table_rows(rows, target_col_idx)
+                extracted = self._extract_metrics_from_table_rows(rows, target_col_idx, start_date, end_date, date_label)
                 data.update(extracted)
 
-            # 8. Text fallback parser over body_text
-            extracted_fallback = self._parse_reporting_text_matrix(body_text, target_col_idx, headers)
+            # 8. Text matrix fallback parser over full body text
+            extracted_fallback = self._parse_reporting_text_matrix(body_text, target_col_idx, headers, start_date, end_date)
             for k, v in extracted_fallback.items():
                 if k not in data or data[k] is None or data[k] == 0:
                     data[k] = v
 
-            # 9. Additional search for C2O / Cart to order in page widgets
-            m_c2o = re.search(r"(?:Cart to order|Menu to cart|Cart conversion|C2O)\s*[:\n\r]*\s*([\d,]+(?:\.\d+)?)\s*%", body_text, re.I)
-            if m_c2o and ("c2o" not in data or not data["c2o"]):
-                data["c2o"] = clean_number(m_c2o.group(1))
+            # 9. Additional search for C2O / Cart to order in page widgets only if not yet set
+            if "c2o" not in data or not data["c2o"]:
+                m_c2o = re.search(r"(?:Cart to order|Menu to cart|Cart conversion|C2O)\s*[:\n\r]*\s*([\d,]+(?:\.\d+)?)\s*%", body_text, re.I)
+                if m_c2o:
+                    data["c2o"] = clean_number(m_c2o.group(1))
 
             print("[✓] Extracted from Reporting tab:", {k: v for k, v in data.items() if v is not None})
 
@@ -735,63 +847,207 @@ class ZomatoScraper:
 
         return data
 
-    def _parse_reporting_text_matrix(self, body_text: str, target_col_idx: int, headers: List[str]) -> Dict[str, Any]:
+    def _scroll_reporting_table_to_reveal_columns(self):
+        """Scrolls table containers horizontally across all frames to ensure older weeks (e.g. 10-16 Aug) are rendered."""
+        print("[*] Scrolling Business reports table horizontally to reveal earlier weekly columns...")
+        for f in [self.page.main_frame] + self.page.frames:
+            try:
+                f.evaluate("""() => {
+                    const scrollables = Array.from(document.querySelectorAll('*')).filter(el => {
+                        return (el.scrollWidth > el.clientWidth) && (el.clientWidth > 250);
+                    });
+                    for (const s of scrollables) {
+                        s.scrollLeft = 0; // scroll to earliest columns on the left
+                    }
+                }""")
+            except Exception:
+                pass
+        self.page.wait_for_timeout(800)
+
+    def _parse_reporting_text_matrix(
+        self, body_text: str, target_col_idx: int, headers: List[str], start_date: Optional[datetime] = None, end_date: Optional[datetime] = None
+    ) -> Dict[str, Any]:
         """
-        Parses metric sequences from raw page text.
-        For example:
-        'Online %\n87.7%\n87.1%\n85.6%\n80.8%\n86.4%\n92.1%\n91.4%\n85.4%\n89.6%\n+6.2%'
+        Robustly parses metric sequences from raw page text.
+        Filters out comparison/trend delta badges (e.g., '▲ +9%', '▼ -3%', '-17.3%')
+        and maps weekly metric columns strictly to the target week.
         """
         metrics: Dict[str, Any] = {}
         lines = [l.strip() for l in body_text.split("\n") if l.strip()]
 
-        def get_sequence_val(line_idx: int) -> Optional[float]:
-            collected_vals = []
-            for j in range(line_idx + 1, min(line_idx + 25, len(lines))):
-                val_str = lines[j]
-                if any(k.lower() in val_str.lower() for k in ["online %", "kitchen preparation", "impressions", "customer funnel", "menu to order", "new users", "marketing"]):
-                    break
-                m = re.search(r"^[-+]?[\d,]+(?:\.\d+)?\s*(?:%|mins|min)?$", val_str)
-                if m:
-                    collected_vals.append(clean_number(val_str))
+        # Identify all week columns present in body_text or headers
+        week_headers = []
+        for h in headers:
+            h_clean = h.replace("\n", " ").strip()
+            if any(k in h_clean.lower() for k in ["metric", "trend", "vs", "comparison"]) and not re.search(r"\bweek\b|\d+\s*-\s*\d+", h_clean, re.I):
+                continue
+            if re.search(r"week\s*\d+|\d+\s*-\s*\d+\s*[A-Za-z]+", h_clean, re.I):
+                week_headers.append(h_clean)
 
-            if not collected_vals:
+        if not week_headers:
+            week_headers = re.findall(r"(?:Week\s*\d+(?:\s*[\(\[]?[^\n\r\)\]]+[\)\]]?)?|\d+\s*-\s*\d+\s*[A-Za-z]+)", body_text, re.I)
+
+        target_week_offset = None
+        if start_date and end_date and week_headers:
+            s_day = start_date.strftime("%d").lstrip("0")
+            e_day = end_date.strftime("%d").lstrip("0")
+            m_abbr = start_date.strftime("%b").lower()
+            cal_week = start_date.isocalendar()[1]
+
+            for w_idx, wh in enumerate(week_headers):
+                wh_low = wh.lower()
+                if (s_day in wh_low and e_day in wh_low and m_abbr in wh_low) or (f"week {cal_week}" in wh_low or f"week{cal_week}" in wh_low):
+                    target_week_offset = w_idx
+                    break
+
+        def extract_clean_sequence(line_idx: int, is_pct_conversion: bool = False) -> Optional[float]:
+            raw_tokens = []
+            for j in range(line_idx + 1, min(line_idx + 40, len(lines))):
+                val_str = lines[j]
+                if any(k.lower() == val_str.lower() or val_str.lower().startswith(k.lower()) for k in [
+                    "sales overview", "customer experience", "funnel", "sales", "delivered orders", "orders",
+                    "average order value", "average rating", "bad orders", "total complaints", "online %",
+                    "kitchen preparation", "impressions", "impressions to menu", "menu to order", "cart to order",
+                    "new users", "lost sales", "rejections", "compare performance", "gross sales"
+                ]):
+                    break
+                # Match numbers, currencies, percentages, minutes
+                if re.search(r"^[-+▲▼]?\s*₹?\s*[\d,]+(?:\.\d+)?\s*(?:%|mins|min)?$", val_str):
+                    raw_tokens.append(val_str)
+
+            if not raw_tokens:
                 return None
 
-            offset_idx = max(0, target_col_idx - 2) if len(headers) > 2 else len(collected_vals) - 2
-            if offset_idx < len(collected_vals):
-                return collected_vals[offset_idx]
-            return collected_vals[-1]
+            # Filter tokens: separate trend badges (e.g. +9%, -3%, ▲5%) vs absolute values
+            first_is_trend = False
+            first_val = raw_tokens[0].strip()
+            if (
+                first_val.startswith("+")
+                or first_val.startswith("▲")
+                or first_val.startswith("▼")
+                or (first_val.startswith("-") and is_pct_conversion)
+                or (len(raw_tokens) > len(week_headers) and len(week_headers) > 0)
+            ):
+                first_is_trend = True
+
+            pure_values = []
+            for idx, tok in enumerate(raw_tokens):
+                if idx == 0 and first_is_trend:
+                    continue
+                num = clean_number(tok)
+                # Funnel conversion rates are strictly non-negative
+                if is_pct_conversion and num < 0:
+                    continue
+                pure_values.append(num)
+
+            if not pure_values:
+                return None
+
+            # If target_week_offset is determined relative to weekly headers
+            if target_week_offset is not None and target_week_offset < len(pure_values):
+                return pure_values[target_week_offset]
+
+            # If target_col_idx in headers table
+            if len(headers) > 2 and target_col_idx >= 2:
+                col_offset = target_col_idx - 2
+                if col_offset < len(pure_values):
+                    return pure_values[col_offset]
+
+            # Default fallback: 2nd from end if latest is in progress
+            if len(pure_values) >= 2:
+                return pure_values[-2]
+            return pure_values[-1]
 
         for i, line in enumerate(lines):
             l_lower = line.lower()
-            if "online %" in l_lower and "visibility" not in metrics:
-                val = get_sequence_val(i)
+
+            # 1. Delivered orders / Orders
+            if ("delivered orders" in l_lower or (l_lower == "orders" and "average" not in l_lower and "bad" not in l_lower)) and "orders" not in metrics:
+                val = extract_clean_sequence(i, is_pct_conversion=False)
+                if val is not None and val > 0:
+                    metrics["orders"] = val
+                    metrics["reporting_orders"] = val
+                    metrics["delivered_orders"] = val
+
+            # 2. Sales
+            elif l_lower == "sales" and "sales" not in metrics:
+                val = extract_clean_sequence(i, is_pct_conversion=False)
+                if val is not None and val > 0:
+                    metrics["sales"] = val
+                    metrics["subtotal"] = val
+
+            # 3. Average Order Value
+            elif ("average order value" in l_lower or l_lower == "aov") and "net_order_value" not in metrics:
+                val = extract_clean_sequence(i, is_pct_conversion=False)
+                if val is not None and val > 0:
+                    metrics["net_order_value"] = val
+                    metrics["aov"] = val
+
+            # 4. Average Rating
+            elif "average rating" in l_lower and "avg_rating" not in metrics:
+                val = extract_clean_sequence(i, is_pct_conversion=False)
+                if val is not None and val > 0:
+                    metrics["avg_rating"] = val
+
+            # 5. Bad Orders
+            elif "bad order" in l_lower and "bad_orders" not in metrics:
+                val = extract_clean_sequence(i, is_pct_conversion=False)
                 if val is not None:
+                    metrics["bad_orders"] = val
+
+            # 6. Total Complaints
+            elif ("total complaints" in l_lower or l_lower == "complaints") and "total_complaints" not in metrics:
+                val = extract_clean_sequence(i, is_pct_conversion=False)
+                if val is not None:
+                    metrics["total_complaints"] = val
+
+            # 7. Online % / Visibility
+            elif ("online %" in l_lower or "visibility" in l_lower) and "visibility" not in metrics:
+                val = extract_clean_sequence(i, is_pct_conversion=True)
+                if val is not None and val >= 0:
                     metrics["visibility"] = val
-            elif ("kitchen preparation" in l_lower or "kitchen prep" in l_lower) and "kpt" not in metrics:
-                val = get_sequence_val(i)
-                if val is not None:
+
+            # 8. Kitchen prep time
+            elif ("kitchen preparation" in l_lower or "kitchen prep" in l_lower or l_lower == "kpt") and "kpt" not in metrics:
+                val = extract_clean_sequence(i, is_pct_conversion=False)
+                if val is not None and val > 0:
                     metrics["kpt"] = val
+
+            # 9. Impressions
             elif l_lower == "impressions" and "impressions" not in metrics:
-                val = get_sequence_val(i)
-                if val is not None:
+                val = extract_clean_sequence(i, is_pct_conversion=False)
+                if val is not None and val > 0:
                     metrics["impressions"] = val
-            elif ("impressions to menu" in l_lower or "impression to menu" in l_lower) and "i2m" not in metrics:
-                val = get_sequence_val(i)
-                if val is not None:
+
+            # 10. Impressions to menu (I2M)
+            elif ("impressions to menu" in l_lower or "impression to menu" in l_lower or l_lower == "i2m") and "i2m" not in metrics:
+                val = extract_clean_sequence(i, is_pct_conversion=True)
+                if val is not None and val >= 0:
                     metrics["i2m"] = val
-            elif "menu to order" in l_lower and "m2o" not in metrics:
-                val = get_sequence_val(i)
-                if val is not None:
+
+            # 11. Menu to order (M2O)
+            elif ("menu to order" in l_lower or l_lower == "m2o") and "m2o" not in metrics:
+                val = extract_clean_sequence(i, is_pct_conversion=True)
+                if val is not None and val >= 0:
                     metrics["m2o"] = val
-            elif "cart to order" in l_lower and "c2o" not in metrics:
-                val = get_sequence_val(i)
-                if val is not None:
+
+            # 12. Cart to order (C2O)
+            elif ("cart to order" in l_lower or l_lower == "c2o" or "menu to cart" in l_lower) and "c2o" not in metrics:
+                val = extract_clean_sequence(i, is_pct_conversion=True)
+                if val is not None and val >= 0:
                     metrics["c2o"] = val
-            elif "new users" in l_lower and "new_users" not in metrics:
-                val = get_sequence_val(i)
+
+            # 13. New users
+            elif "new user" in l_lower and "new_users" not in metrics:
+                val = extract_clean_sequence(i, is_pct_conversion=False)
                 if val is not None:
                     metrics["new_users"] = val
+
+            # 14. Rejections
+            elif ("rejection" in l_lower or "rejected" in l_lower) and "mx_rejections" not in metrics:
+                val = extract_clean_sequence(i, is_pct_conversion=False)
+                if val is not None:
+                    metrics["mx_rejections"] = val
 
         return metrics
 
@@ -800,8 +1056,10 @@ class ZomatoScraper:
     ) -> int:
         """
         Finds which column index corresponds to the requested date range.
-        Handles headers like 'Week 35\n24 - 30 Aug 2026' or '24 - 30 Aug'.
-        Defaults to the last completed week column if no exact match is found.
+        Handles headers like:
+        - 'Week 33\\n10 - 16 Aug 2026'
+        - 'Week 34\\n17 - 23 Aug 2026'
+        - '10 Aug - 16 Aug'
         """
         if not headers or len(headers) <= 1:
             return 1
@@ -812,31 +1070,50 @@ class ZomatoScraper:
         end_day_padded = end_date.strftime("%d")
         month_abbr = start_date.strftime("%b").lower()
         month_abbr_end = end_date.strftime("%b").lower()
+        cal_week = start_date.isocalendar()[1]
 
-        # Step A: Check each header against date components
+        # Step A: Check each header against exact start day, end day, and month
         for idx, h in enumerate(headers):
             h_lower = h.lower()
-            if "trend" in h_lower or "metric" in h_lower or "vs" in h_lower:
+            if any(k in h_lower for k in ["trend", "vs", "comparison"]) and not re.search(r"\bweek\b|\d+\s*-\s*\d+", h_lower):
                 continue
 
-            has_start = (start_day in h_lower) or (start_day_padded in h_lower)
-            has_end = (end_day in h_lower) or (end_day_padded in h_lower)
+            # Exact date span match (e.g. "10 - 16 Aug" or "10-16 Aug" or "10 Aug - 16 Aug")
+            if re.search(rf"\b0?{start_day}\b[^\d\n\r]*\b0?{end_day}\b[^\n\r]*{month_abbr}", h_lower) is not None:
+                return idx
+
+            has_start = (re.search(rf"\b0?{start_day}\b", h_lower) is not None) or (start_day in h_lower) or (start_day_padded in h_lower)
+            has_end = (re.search(rf"\b0?{end_day}\b", h_lower) is not None) or (end_day in h_lower) or (end_day_padded in h_lower)
             has_month = (month_abbr in h_lower) or (month_abbr_end in h_lower)
 
             if has_start and has_end and has_month:
                 return idx
 
-            if date_label and date_label.lower() in h_lower:
+            if date_label and (date_label.lower() in h_lower or h_lower in date_label.lower()):
                 return idx
 
-        # Step B: Fallback - Select the last completed week column
+        # Step B: Week number match if present
+        for idx, h in enumerate(headers):
+            h_lower = h.lower()
+            if f"week {cal_week}" in h_lower or f"week{cal_week}" in h_lower:
+                return idx
+
+        # Step C: Relative week offset calculation
         valid_indices = []
         for idx, h in enumerate(headers):
             h_lower = h.lower()
-            if "trend" in h_lower or "metric" in h_lower or "vs" in h_lower or "total" in h_lower:
+            if any(k in h_lower for k in ["trend", "metric", "vs", "total", "comparison"]) and not re.search(r"\bweek\b|\d+", h_lower):
                 continue
             if "week" in h_lower or any(m in h_lower for m in ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]):
                 valid_indices.append(idx)
+
+        # If we know the weeks count and the current target week
+        today = datetime.now()
+        weeks_ago = max(1, int((today - start_date).days / 7))
+        if len(valid_indices) >= weeks_ago:
+            target_idx_pos = -(weeks_ago + 1)
+            if abs(target_idx_pos) <= len(valid_indices):
+                return valid_indices[target_idx_pos]
 
         if len(valid_indices) >= 2:
             return valid_indices[-2]
@@ -845,33 +1122,74 @@ class ZomatoScraper:
 
         return len(headers) - 1
 
-    def _extract_metrics_from_table_rows(self, rows: List[Dict[str, Any]], target_col_idx: int) -> Dict[str, Any]:
-        """Maps table rows to internal metric keys using the selected column index."""
+    def _extract_metrics_from_table_rows(
+        self,
+        rows: List[Dict[str, Any]],
+        target_col_idx: int,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        date_label: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Maps table rows to internal metric keys using headerMap or column index."""
         extracted: Dict[str, Any] = {}
+
+        start_day = start_date.strftime("%d").lstrip("0") if start_date else ""
+        end_day = end_date.strftime("%d").lstrip("0") if end_date else ""
+        start_day_padded = start_date.strftime("%d") if start_date else ""
+        end_day_padded = end_date.strftime("%d") if end_date else ""
+        month_abbr = start_date.strftime("%b").lower() if start_date else ""
+        cal_week = start_date.isocalendar()[1] if start_date else 0
 
         for row_data in rows:
             metric_name = row_data.get("metricName", "").strip().lower()
             cells = row_data.get("cells", [])
+            header_map = row_data.get("headerMap", {})
 
-            if target_col_idx >= len(cells):
-                cell_val = cells[-1] if cells else ""
-            else:
-                cell_val = cells[target_col_idx]
+            cell_val = None
+            # 1. First priority: match exact column header key in headerMap
+            if header_map and start_date and end_date:
+                for h_key, h_val in header_map.items():
+                    k_low = h_key.lower()
+                    if any(k in k_low for k in ["trend", "vs", "comparison"]) and not re.search(r"\bweek\b|\d+\s*-\s*\d+", k_low):
+                        continue
+                    if re.search(rf"\b0?{start_day}\b[^\d\n\r]*\b0?{end_day}\b[^\n\r]*{month_abbr}", k_low) is not None:
+                        cell_val = h_val
+                        break
+                    if (start_day in k_low or start_day_padded in k_low) and (end_day in k_low or end_day_padded in k_low) and month_abbr in k_low:
+                        cell_val = h_val
+                        break
+                    if cal_week > 0 and (f"week {cal_week}" in k_low or f"week{cal_week}" in k_low):
+                        cell_val = h_val
+                        break
+                    if date_label and date_label.lower() in k_low:
+                        cell_val = h_val
+                        break
+
+            # 2. Second priority: use positional index in cells
+            if cell_val is None:
+                if target_col_idx < len(cells):
+                    cell_val = cells[target_col_idx]
+                elif cells:
+                    cell_val = cells[-1]
+                else:
+                    cell_val = ""
 
             # 1. Sales
-            if metric_name == "sales":
+            if metric_name == "sales" or metric_name == "total sales":
                 extracted["sales"] = clean_number(cell_val)
                 extracted["subtotal"] = clean_number(cell_val)
                 extracted["sales_after_discount"] = clean_number(cell_val)
 
             # 2. Delivered / Total Orders in reporting table
-            elif "delivered" in metric_name or metric_name == "orders":
+            elif "delivered" in metric_name or metric_name == "orders" or "total orders" in metric_name:
                 extracted["orders"] = clean_number(cell_val)
                 extracted["reporting_orders"] = clean_number(cell_val)
+                extracted["delivered_orders"] = clean_number(cell_val)
 
             # 3. Average Order Value
             elif "average order value" in metric_name or "aov" in metric_name:
                 extracted["net_order_value"] = clean_number(cell_val)
+                extracted["aov"] = clean_number(cell_val)
 
             # 4. Average rating
             elif "average rating" in metric_name or "rating" in metric_name:
@@ -890,7 +1208,7 @@ class ZomatoScraper:
                 extracted["lost_sales"] = clean_number(cell_val)
 
             # 8. Online % / Visibility
-            elif "online" in metric_name and "%" in metric_name:
+            elif ("online" in metric_name and "%" in metric_name) or "visibility" in metric_name:
                 extracted["visibility"] = clean_number(cell_val)
 
             # 9. Kitchen preparation time (KPT)
@@ -1004,28 +1322,14 @@ class ZomatoScraper:
         print("-" * 50)
 
         try:
-            # Step 1: Navigate to Finance -> Payouts
-            payout_nav_selectors = [
-                "//span[normalize-space()='Payouts']",
-                "//a[contains(@href, 'payouts')]",
-                "//button[contains(., 'Payouts')]",
-                "//div[@role='button'][contains(., 'Payouts')]",
-                "//span[normalize-space()='Finance']",
-            ]
-            elem = self._find_clickable(payout_nav_selectors, timeout_ms=3000)
-            if elem:
-                elem.click()
-                self.page.wait_for_timeout(2500)
-            else:
-                self.page.goto(ZOMATO_FINANCE_URL, wait_until="domcontentloaded", timeout=30000)
-                self.page.wait_for_timeout(2500)
+            self._close_all_drawers_and_modals()
 
-            # Ensure Payouts sub-menu is active
-            if "payouts" not in self.page.url.lower():
-                payout_sub = self._find_clickable(["//a[contains(@href, 'payouts')]", "//span[text()='Payouts']"], timeout_ms=2000)
-                if payout_sub:
-                    payout_sub.click()
-                    self.page.wait_for_timeout(2500)
+            # Step 1: Navigate to Finance -> Payouts directly
+            current_url = self.page.url.lower()
+            if "payouts" not in current_url:
+                print(f"[*] Navigating directly to Payouts URL: {ZOMATO_FINANCE_URL}")
+                self.page.goto(ZOMATO_FINANCE_URL, wait_until="domcontentloaded", timeout=30000)
+                self.page.wait_for_timeout(3000)
 
             # Step 2: Select restaurant outlet if selector present
             self.select_restaurant_outlet(restaurant_id or restaurant_name)
@@ -1210,6 +1514,8 @@ class ZomatoScraper:
 
         except Exception as e:
             print(f"[!] Error in Payout tab extraction: {e}")
+        finally:
+            self._close_all_drawers_and_modals()
 
         return data
 

@@ -43,11 +43,20 @@ python main.py --setup-login
 
 ---
 
-### 2. Generate Weekly Report (Previous Mon–Sun)
-```bash
-python main.py --weekly
-```
-This automatically calculates the last completed week's date range, extracts all performance and finance cards, computes derived formulas, and saves the Excel report in `reports/`.
+### 2. Generate Weekly Report(s)
+You can generate reports for the previous week or specify the number of previous weeks to process:
+
+- **Previous 1 week (default):**
+  ```bash
+  python main.py --weekly
+  ```
+- **Previous N weeks (e.g., 2, 3, 4 weeks):**
+  ```bash
+  python main.py --weeks 2
+  # or
+  python main.py --weekly 3
+  ```
+This automatically calculates the completed weekly date ranges (Monday to Sunday), extracts the performance and finance metrics for each week sequentially within the same browser session, and saves individual formatted Excel reports in `reports/`.
 
 ---
 

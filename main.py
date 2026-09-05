@@ -1,7 +1,7 @@
 import argparse
 import sys
 from datetime import datetime, timedelta
-from typing import Tuple, Optional
+from typing import Tuple, Optional, List, Union
 
 from config import (
     DEFAULT_RESTAURANT_NAME,
@@ -15,23 +15,42 @@ from processors.metric_calculator import MetricCalculator
 from exporters.excel_generator import ExcelReportGenerator
 
 
-def get_last_week_dates() -> Tuple[datetime, datetime, str]:
-    """Returns previous week's Monday, Sunday, and formatted label."""
+def format_date_range_label(start_date: datetime, end_date: datetime) -> str:
+    """Formats start and end dates into a clean label (e.g. '24 - 30 Aug\\'26' or '28 Jul - 03 Aug\\'26')."""
+    if start_date.year != end_date.year:
+        return f"{start_date.strftime('%d %b')}'{start_date.strftime('%y')} - {end_date.strftime('%d %b')}'{end_date.strftime('%y')}"
+    elif start_date.month != end_date.month:
+        return f"{start_date.strftime('%d %b')} - {end_date.strftime('%d %b')}'{end_date.strftime('%y')}"
+    else:
+        return f"{start_date.strftime('%d')} - {end_date.strftime('%d %b')}'{end_date.strftime('%y')}"
+
+
+def get_weekly_date_ranges(num_weeks: int = 1) -> List[Tuple[datetime, datetime, str]]:
+    """
+    Returns list of (start_date, end_date, formatted_label) tuples for the past `num_weeks` completed weeks.
+    Ordered chronologically from earliest to most recent.
+    """
     today = datetime.now()
-    # Find most recent Monday
-    last_monday = today - timedelta(days=today.weekday() + 7)
-    last_sunday = last_monday + timedelta(days=6)
-    
-    # Format label like "24 - 30 Aug'26"
-    label = f"{last_monday.strftime('%d')} - {last_sunday.strftime('%d %b')}'{last_sunday.strftime('%y')}"
-    return last_monday, last_sunday, label
+    ranges = []
+    # Loop backwards from num_weeks to 1 so the reports are chronologically ordered
+    for w in range(num_weeks, 0, -1):
+        monday = today - timedelta(days=today.weekday() + 7 * w)
+        sunday = monday + timedelta(days=6)
+        label = format_date_range_label(monday, sunday)
+        ranges.append((monday, sunday, label))
+    return ranges
+
+
+def get_last_week_dates() -> Tuple[datetime, datetime, str]:
+    """Returns previous completed week's Monday, Sunday, and formatted label."""
+    return get_weekly_date_ranges(num_weeks=1)[0]
 
 
 def get_custom_dates(start_str: str, end_str: str) -> Tuple[datetime, datetime, str]:
     """Parses custom start and end date strings (YYYY-MM-DD)."""
     start_date = datetime.strptime(start_str.strip(), "%Y-%m-%d")
     end_date = datetime.strptime(end_str.strip(), "%Y-%m-%d")
-    label = f"{start_date.strftime('%d %b')} - {end_date.strftime('%d %b')}'{end_date.strftime('%y')}"
+    label = format_date_range_label(start_date, end_date)
     return start_date, end_date, label
 
 
@@ -42,23 +61,35 @@ def setup_google_login():
 
 
 def run_automation(
-    start_date: datetime,
-    end_date: datetime,
-    date_label: str,
+    date_ranges: Union[Tuple[datetime, datetime, str], List[Tuple[datetime, datetime, str]], datetime],
+    end_date: Optional[datetime] = None,
+    date_label: Optional[str] = None,
     restaurant_name: Optional[str] = None,
-    restaurant_id: Optional[str] = None
+    restaurant_id: Optional[str] = None,
 ):
-    """Executes the complete scraper, calculator, and report generator pipeline."""
+    """Executes scraper, calculator, and report generator pipeline for one or multiple date ranges."""
+    # Normalize date_ranges input for backwards-compatibility
+    if isinstance(date_ranges, datetime):
+        if end_date is None or date_label is None:
+            raise ValueError("end_date and date_label must be provided when start_date is passed as first argument.")
+        ranges: List[Tuple[datetime, datetime, str]] = [(date_ranges, end_date, date_label)]
+    elif isinstance(date_ranges, tuple):
+        ranges = [date_ranges]
+    else:
+        ranges = list(date_ranges)
+
     target_display_name = restaurant_name or (f"ID: {restaurant_id}" if restaurant_id else DEFAULT_RESTAURANT_NAME)
     target_display_id = restaurant_id or (DEFAULT_RESTAURANT_ID if not restaurant_name else "")
 
     print("=" * 60)
-    print(f"  ZOMATO REPORT AUTOMATION: {date_label}")
+    print(f"  ZOMATO REPORT AUTOMATION: {len(ranges)} Report(s) Scheduled")
     if target_display_id and target_display_name != f"ID: {restaurant_id}":
         print(f"  Target Restaurant: {target_display_name} (ID: {target_display_id})")
     else:
         print(f"  Target Restaurant: {target_display_name}")
     print("=" * 60)
+
+    generated_reports = []
 
     with BrowserManager(headless=False) as bm:
         page = bm.get_page()
@@ -72,49 +103,59 @@ def run_automation(
             print("[*] Please complete Google Login in the opened browser window...")
             input(">>> After logging in to the dashboard, press ENTER here to continue extraction... ")
 
-        print(f"\n[*] Starting data extraction for: {date_label}")
-        extracted_data = scraper.scrape_all(
-            start_date,
-            end_date,
-            date_label,
-            restaurant_name=restaurant_name,
-            restaurant_id=restaurant_id
-        )
+        total_reports = len(ranges)
+        for idx, (s_date, e_date, d_label) in enumerate(ranges, 1):
+            print("\n" + "=" * 60)
+            print(f"  PROCESSING REPORT [{idx}/{total_reports}]: {d_label}")
+            print(f"  Date Range: {s_date.strftime('%Y-%m-%d')} to {e_date.strftime('%Y-%m-%d')}")
+            print("=" * 60)
 
-        res_name = extracted_data.get("restaurant_name") or restaurant_name or (f"Restaurant_{restaurant_id}" if restaurant_id else DEFAULT_RESTAURANT_NAME)
-        res_id = extracted_data.get("restaurant_id") or restaurant_id or DEFAULT_RESTAURANT_ID
+            print(f"\n[*] Starting data extraction for: {d_label}")
+            extracted_data = scraper.scrape_all(
+                s_date,
+                e_date,
+                d_label,
+                restaurant_name=restaurant_name,
+                restaurant_id=restaurant_id,
+            )
 
-        print("\n[*] Extracted Raw Metrics:")
-        pct_metrics = {"visibility", "i2m", "c2o", "m2o", "discount_pct", "commission_pct", "ads_pct", "payout_pct"}
-        for k, v in extracted_data.items():
-            if k in pct_metrics and isinstance(v, (int, float)):
-                print(f"    - {k}: {v:.2f}%")
-            else:
-                print(f"    - {k}: {v}")
+            res_name = extracted_data.get("restaurant_name") or restaurant_name or (f"Restaurant_{restaurant_id}" if restaurant_id else DEFAULT_RESTAURANT_NAME)
+            res_id = extracted_data.get("restaurant_id") or restaurant_id or DEFAULT_RESTAURANT_ID
 
-        # Compute all derived formulas and business rules
-        metrics = MetricCalculator.calculate_zomato_metrics(extracted_data)
+            print(f"\n[*] Extracted Raw Metrics ({d_label}):")
+            pct_metrics = {"visibility", "i2m", "c2o", "m2o", "discount_pct", "commission_pct", "ads_pct", "payout_pct"}
+            for k, v in extracted_data.items():
+                if k in pct_metrics and isinstance(v, (int, float)):
+                    print(f"    - {k}: {v:.2f}%")
+                else:
+                    print(f"    - {k}: {v}")
 
-        # Generate styled Excel Report
-        generator = ExcelReportGenerator()
-        report_file = generator.generate_report(
-            zomato_metrics=metrics,
-            restaurant_name=res_name,
-            restaurant_id=res_id,
-            date_range_label=date_label,
-            report_title="Weekly Report"
-        )
+            # Compute all derived formulas and business rules
+            metrics = MetricCalculator.calculate_zomato_metrics(extracted_data)
 
-        print("\n" + "=" * 60)
-        print(f"[✓] Automation Completed Successfully!")
-        print(f"[✓] Output Report File: {report_file}")
-        print("=" * 60)
+            # Generate styled Excel Report
+            generator = ExcelReportGenerator()
+            report_file = generator.generate_report(
+                zomato_metrics=metrics,
+                restaurant_name=res_name,
+                restaurant_id=res_id,
+                date_range_label=d_label,
+                report_title="Weekly Report",
+            )
+            generated_reports.append(report_file)
+
+    print("\n" + "=" * 60)
+    print(f"[✓] Automation Completed Successfully! Generated {len(generated_reports)} report(s):")
+    for r in generated_reports:
+        print(f"    - {r}")
+    print("=" * 60)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Automate Zomato Partner Report Generation into Excel.")
     parser.add_argument("--setup-login", action="store_true", help="Launch browser to perform initial Google login")
-    parser.add_argument("--weekly", action="store_true", help="Run report for the previous completed week (Mon-Sun)")
+    parser.add_argument("--weekly", nargs="?", const=1, type=int, default=None, help="Generate weekly report(s) for previous N weeks (default: 1)")
+    parser.add_argument("--weeks", "-w", type=int, default=None, help="Number of previous weeks to generate reports for (e.g. 1, 2, 3...)")
     parser.add_argument("--start-date", type=str, help="Custom start date (YYYY-MM-DD)")
     parser.add_argument("--end-date", type=str, help="Custom end date (YYYY-MM-DD)")
     parser.add_argument("--restaurant", "-r", type=str, default=None, help="Target restaurant name for outlet selector")
@@ -130,8 +171,6 @@ def main():
         return
 
     if args.test_sample:
-        from processors.metric_calculator import MetricCalculator
-        from exporters.excel_generator import ExcelReportGenerator
         sample_data = {
             "orders": 58,
             "subtotal": 14465,
@@ -155,25 +194,29 @@ def main():
             restaurant_name=target_restaurant or DEFAULT_RESTAURANT_NAME,
             restaurant_id=target_id or DEFAULT_RESTAURANT_ID,
             date_range_label="24 - 30 Aug'26",
-            filename="Sample_Weekly_Report.xlsx"
+            filename="Sample_Weekly_Report.xlsx",
         )
         return
 
-    if args.weekly:
-        start_date, end_date, date_label = get_last_week_dates()
-        run_automation(start_date, end_date, date_label, restaurant_name=target_restaurant, restaurant_id=target_id)
+    num_weeks = args.weeks if args.weeks is not None else args.weekly
+    if num_weeks is not None:
+        if isinstance(num_weeks, bool):
+            num_weeks = 1
+        num_weeks = max(1, int(num_weeks))
+        date_ranges = get_weekly_date_ranges(num_weeks)
+        run_automation(date_ranges, restaurant_name=target_restaurant, restaurant_id=target_id)
         return
 
     if args.start_date and args.end_date:
         start_date, end_date, date_label = get_custom_dates(args.start_date, args.end_date)
-        run_automation(start_date, end_date, date_label, restaurant_name=target_restaurant, restaurant_id=target_id)
+        run_automation([(start_date, end_date, date_label)], restaurant_name=target_restaurant, restaurant_id=target_id)
         return
 
     # Interactive CLI Menu if no arguments passed
     print("\n" + "=" * 50)
     print("      RESTAURANT REPORT AUTOMATION")
     print("=" * 50)
-    print("1. Run Weekly Report (Previous Monday - Sunday)")
+    print("1. Run Weekly Reports (Specify number of previous weeks)")
     print("2. Run Custom Date Range (Start Date - End Date)")
     print("3. Google Login Setup (Save persistent session)")
     print("4. Generate Sample Report from template data")
@@ -195,13 +238,18 @@ def main():
             target_id = DEFAULT_RESTAURANT_ID
 
         if choice == "1":
-            start_date, end_date, date_label = get_last_week_dates()
-            run_automation(start_date, end_date, date_label, restaurant_name=target_restaurant, restaurant_id=target_id)
+            weeks_input = input("Enter number of previous weeks to generate [Default: 1]: ").strip()
+            num_weeks = int(weeks_input) if weeks_input.isdigit() and int(weeks_input) > 0 else 1
+            date_ranges = get_weekly_date_ranges(num_weeks)
+            print(f"\n[*] Selected {num_weeks} week(s) to process:")
+            for s, e, lbl in date_ranges:
+                print(f"    - {lbl} ({s.strftime('%Y-%m-%d')} to {e.strftime('%Y-%m-%d')})")
+            run_automation(date_ranges, restaurant_name=target_restaurant, restaurant_id=target_id)
         elif choice == "2":
             start_str = input("Enter start date (YYYY-MM-DD): ").strip()
             end_str = input("Enter end date (YYYY-MM-DD): ").strip()
             start_date, end_date, date_label = get_custom_dates(start_str, end_str)
-            run_automation(start_date, end_date, date_label, restaurant_name=target_restaurant, restaurant_id=target_id)
+            run_automation([(start_date, end_date, date_label)], restaurant_name=target_restaurant, restaurant_id=target_id)
     elif choice == "3":
         setup_google_login()
     elif choice == "4":
