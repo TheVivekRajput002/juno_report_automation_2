@@ -70,7 +70,7 @@ def run_automation(
     restaurant_name: Optional[str] = None,
     restaurant_id: Optional[str] = None,
     worksheet_name: str = DEFAULT_WORKSHEET_NAME,
-    export_excel: bool = True,
+    export_excel: bool = False,
     export_sheets: bool = True,
 ):
     """Executes scraper, calculator, and report generator pipeline for one or multiple date ranges."""
@@ -142,7 +142,7 @@ def run_automation(
             # Compute all derived formulas and business rules
             metrics = MetricCalculator.calculate_zomato_metrics(extracted_data)
 
-            # 1. Generate styled Excel Report (optional)
+            # 1. Generate styled Excel Report (optional, only if requested)
             if export_excel:
                 excel_gen = ExcelReportGenerator()
                 report_file = excel_gen.generate_report(
@@ -172,18 +172,18 @@ def run_automation(
 
     print("\n" + "=" * 60)
     print(f"[✓] Automation Completed Successfully!")
+    if generated_sheet_urls:
+        print(f"[+] Updated Google Sheet Tab '{worksheet_name}':")
+        print(f"    - {generated_sheet_urls[-1]}")
     if generated_excel_reports:
         print(f"[+] Generated {len(generated_excel_reports)} Excel report(s):")
         for r in generated_excel_reports:
             print(f"    - {r}")
-    if generated_sheet_urls:
-        print(f"[+] Updated Google Sheet Tab '{worksheet_name}':")
-        print(f"    - {generated_sheet_urls[-1]}")
     print("=" * 60)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Automate Zomato Partner Report Generation into Google Sheets & Excel.")
+    parser = argparse.ArgumentParser(description="Automate Zomato Partner Report Generation into Google Sheets.")
     parser.add_argument("--setup-login", action="store_true", help="Launch browser to perform initial Google login")
     parser.add_argument("--weekly", nargs="?", const=1, type=int, default=None, help="Generate weekly report(s) for previous N weeks (default: 1)")
     parser.add_argument("--weeks", "-w", type=int, default=None, help="Number of previous weeks to generate reports for (e.g. 1, 2, 3...)")
@@ -192,15 +192,15 @@ def main():
     parser.add_argument("--restaurant", "-r", type=str, default=None, help="Target restaurant name for outlet selector")
     parser.add_argument("--restaurant-id", "--res-id", "-i", type=str, default=None, help="Target restaurant ID for outlet selector")
     parser.add_argument("--tab", "--worksheet", type=str, default=DEFAULT_WORKSHEET_NAME, help="Target Google Sheet Tab name (default: Automated Reports)")
+    parser.add_argument("--excel", action="store_true", help="Also generate local Excel (.xlsx) file in reports/")
     parser.add_argument("--no-sheets", action="store_true", help="Skip Google Sheets export")
-    parser.add_argument("--no-excel", action="store_true", help="Skip local Excel generation")
     parser.add_argument("--test-sample", action="store_true", help="Generate sample verification report with test data")
 
     args = parser.parse_args()
     target_restaurant = args.restaurant
     target_id = args.restaurant_id
     worksheet_name = args.tab
-    export_excel = not args.no_excel
+    export_excel = args.excel
     export_sheets = not args.no_sheets
 
     if args.setup_login:

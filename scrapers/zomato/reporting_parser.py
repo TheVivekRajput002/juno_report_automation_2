@@ -20,48 +20,50 @@ class ReportingParser:
         """
         Finds which column index corresponds to the requested date range.
         Handles headers like:
-        - 'Week 33\\n10 - 16 Aug 2026'
-        - 'Week 34\\n17 - 23 Aug 2026'
-        - '10 Aug - 16 Aug'
+        - 'Week 36 31 Aug - 6 Sep 2026'
+        - 'Week 35 24 - 30 Aug 2026'
+        - '24 - 30 Aug'
         """
         if not headers or len(headers) <= 1:
             return 1
 
         start_day = start_date.strftime("%d").lstrip("0")
         end_day = end_date.strftime("%d").lstrip("0")
-        start_day_padded = start_date.strftime("%d")
-        end_day_padded = end_date.strftime("%d")
-        month_abbr = start_date.strftime("%b").lower()
-        month_abbr_end = end_date.strftime("%b").lower()
+        s_month = start_date.strftime("%b").lower()
+        e_month = end_date.strftime("%b").lower()
         cal_week = start_date.isocalendar()[1]
 
-        # Step A: Check each header against exact start day, end day, and month
+        # Priority 1: Match by ISO Week number (e.g. 'Week 36')
         for idx, h in enumerate(headers):
-            h_lower = h.lower()
-            if any(k in h_lower for k in ["trend", "vs", "comparison"]) and not re.search(r"\bweek\b|\d+\s*-\s*\d+", h_lower):
+            h_low = h.lower()
+            if "vs" in h_low or "trend" in h_low or "comparison" in h_low:
                 continue
-
-            # Exact date span match (e.g. "10 - 16 Aug" or "10-16 Aug" or "10 Aug - 16 Aug")
-            if re.search(rf"\b0?{start_day}\b[^\d\n\r]*\b0?{end_day}\b[^\n\r]*{month_abbr}", h_lower) is not None:
+            if re.search(rf"\bweek\s*{cal_week}\b", h, re.I):
                 return idx
 
-            has_start = (re.search(rf"\b0?{start_day}\b", h_lower) is not None) or (start_day in h_lower) or (start_day_padded in h_lower)
-            has_end = (re.search(rf"\b0?{end_day}\b", h_lower) is not None) or (end_day in h_lower) or (end_day_padded in h_lower)
-            has_month = (month_abbr in h_lower) or (month_abbr_end in h_lower)
-
-            if has_start and has_end and has_month:
-                return idx
-
-            if date_label and (date_label.lower() in h_lower or h_lower in date_label.lower()):
-                return idx
-
-        # Step B: Week number match if present
+        # Priority 2: Exact date range regex
         for idx, h in enumerate(headers):
-            h_lower = h.lower()
-            if f"week {cal_week}" in h_lower or f"week{cal_week}" in h_lower:
-                return idx
+            h_low = h.lower()
+            if "vs" in h_low or "trend" in h_low or "comparison" in h_low:
+                continue
+            if s_month != e_month:
+                if re.search(rf"\b0?{start_day}\s*{s_month}\s*-\s*0?{end_day}\s*{e_month}\b", h_low) or \
+                   re.search(rf"\b0?{start_day}\s*-\s*0?{end_day}\s*{e_month}\b", h_low):
+                    return idx
+            else:
+                if re.search(rf"\b0?{start_day}\s*(?:{s_month})?\s*-\s*0?{end_day}\s*{s_month}\b", h_low):
+                    return idx
 
-        # Step C: Relative week offset calculation
+        # Priority 3: date_label string matching
+        if date_label:
+            for idx, h in enumerate(headers):
+                h_low = h.lower()
+                if "vs" in h_low or "trend" in h_low or "comparison" in h_low:
+                    continue
+                if date_label.lower() in h_low:
+                    return idx
+
+        # Priority 4: Relative week offset calculation
         valid_indices = []
         for idx, h in enumerate(headers):
             h_lower = h.lower()
@@ -92,49 +94,19 @@ class ReportingParser:
         end_date: Optional[datetime] = None,
         date_label: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Maps table rows to internal metric keys using headerMap or column index."""
+        """Maps table rows to internal metric keys using resolved column index."""
         extracted: Dict[str, Any] = {}
-
-        start_day = start_date.strftime("%d").lstrip("0") if start_date else ""
-        end_day = end_date.strftime("%d").lstrip("0") if end_date else ""
-        start_day_padded = start_date.strftime("%d") if start_date else ""
-        end_day_padded = end_date.strftime("%d") if end_date else ""
-        month_abbr = start_date.strftime("%b").lower() if start_date else ""
-        cal_week = start_date.isocalendar()[1] if start_date else 0
 
         for row_data in rows:
             metric_name = row_data.get("metricName", "").strip().lower()
             cells = row_data.get("cells", [])
-            header_map = row_data.get("headerMap", {})
 
-            cell_val = None
-            # 1. First priority: match exact column header key in headerMap
-            if header_map and start_date and end_date:
-                for h_key, h_val in header_map.items():
-                    k_low = h_key.lower()
-                    if any(k in k_low for k in ["trend", "vs", "comparison"]) and not re.search(r"\bweek\b|\d+\s*-\s*\d+", k_low):
-                        continue
-                    if re.search(rf"\b0?{start_day}\b[^\d\n\r]*\b0?{end_day}\b[^\n\r]*{month_abbr}", k_low) is not None:
-                        cell_val = h_val
-                        break
-                    if (start_day in k_low or start_day_padded in k_low) and (end_day in k_low or end_day_padded in k_low) and month_abbr in k_low:
-                        cell_val = h_val
-                        break
-                    if cal_week > 0 and (f"week {cal_week}" in k_low or f"week{cal_week}" in k_low):
-                        cell_val = h_val
-                        break
-                    if date_label and date_label.lower() in k_low:
-                        cell_val = h_val
-                        break
-
-            # 2. Second priority: use positional index in cells
-            if cell_val is None:
-                if target_col_idx < len(cells):
-                    cell_val = cells[target_col_idx]
-                elif cells:
-                    cell_val = cells[-1]
-                else:
-                    cell_val = ""
+            if target_col_idx < len(cells):
+                cell_val = cells[target_col_idx]
+            elif cells:
+                cell_val = cells[-1]
+            else:
+                cell_val = ""
 
             # 1. Sales
             if metric_name == "sales" or metric_name == "total sales":

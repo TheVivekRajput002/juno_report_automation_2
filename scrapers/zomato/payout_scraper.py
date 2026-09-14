@@ -29,43 +29,51 @@ class PayoutScraper(BaseZomatoScraper):
         start_day_unpadded = start_date.strftime("%d").lstrip("0")
         end_day = end_date.strftime("%d")
         end_day_unpadded = end_date.strftime("%d").lstrip("0")
-        month_abbr = start_date.strftime("%b")
-        short_range = f"{start_day} {month_abbr} - {end_day} {month_abbr}"
+        s_month = start_date.strftime("%b")
+        e_month = end_date.strftime("%b")
 
-        print(f"[*] Locating payout cycle row for: {short_range} / {start_day_unpadded} - {end_day_unpadded} {month_abbr}...")
+        if s_month != e_month:
+            display_range = f"{start_day_unpadded} {s_month} - {end_day_unpadded} {e_month}"
+        else:
+            display_range = f"{start_day_unpadded} - {end_day_unpadded} {s_month}"
+
+        print(f"[*] Locating payout cycle row for: {display_range}...")
 
         cycle_selectors = [
-            f"//tr[contains(., '{start_day}') and contains(., '{end_day}') and contains(., '{month_abbr}')]",
-            f"//tr[contains(., '{start_day_unpadded}') and contains(., '{end_day_unpadded}') and contains(., '{month_abbr}')]",
-            f"//div[contains(@class, 'row') or contains(@class, 'card') or contains(@class, 'item')][contains(., '{start_day}') and contains(., '{end_day}')]",
-            f"//*[contains(text(), '{start_day} {month_abbr}') and contains(text(), '{end_day} {month_abbr}')]",
-            f"//*[contains(text(), '{short_range}')]",
+            f"//tr[contains(., '{start_day}') and contains(., '{end_day}') and (contains(., '{s_month}') or contains(., '{e_month}'))]",
+            f"//tr[contains(., '{start_day_unpadded}') and contains(., '{end_day_unpadded}') and (contains(., '{s_month}') or contains(., '{e_month}'))]",
+            f"//div[contains(@class, 'row') or contains(@class, 'card') or contains(@class, 'item')][contains(., '{start_day_unpadded}') and contains(., '{end_day_unpadded}')]",
+            f"//*[contains(text(), '{start_day_unpadded} {s_month}') and contains(text(), '{end_day_unpadded} {e_month}')]",
+            f"//*[contains(text(), '{display_range}')]",
         ]
 
         row_elem = self.find_clickable(cycle_selectors, timeout_ms=2500)
         if row_elem:
             try:
                 row_elem.click()
-                print(f"[+] Clicked matching payout cycle row for: {short_range}")
+                print(f"[+] Clicked matching payout cycle row for: {display_range}")
                 return
             except Exception:
                 pass
 
         for f in [self.page.main_frame] + self.page.frames:
             try:
-                clicked = f.evaluate("""({ sDay, eDay, mAbbr }) => {
+                clicked = f.evaluate("""({ sDay, eDay, sM, eM }) => {
                     const rows = Array.from(document.querySelectorAll('tr, [role="row"], div[class*="row"], div[class*="item"], div[class*="card"]'));
                     for (const r of rows) {
                         const txt = (r.innerText || '').toLowerCase();
-                        if (txt.includes(mAbbr.toLowerCase()) && (txt.includes(sDay) || txt.includes(parseInt(sDay, 10).toString())) && (txt.includes(eDay) || txt.includes(parseInt(eDay, 10).toString()))) {
+                        const hasMonth = txt.includes(sM.toLowerCase()) || txt.includes(eM.toLowerCase());
+                        const hasStart = txt.includes(sDay) || (new RegExp('\\\\b0?' + sDay + '\\\\b')).test(txt);
+                        const hasEnd = txt.includes(eDay) || (new RegExp('\\\\b0?' + eDay + '\\\\b')).test(txt);
+                        if (hasMonth && hasStart && hasEnd) {
                             r.click();
                             return true;
                         }
                     }
                     return false;
-                }""", {"sDay": start_day, "eDay": end_day, "mAbbr": month_abbr})
+                }""", {"sDay": start_day_unpadded, "eDay": end_day_unpadded, "sM": s_month, "eM": e_month})
                 if clicked:
-                    print(f"[+] Clicked matching payout cycle row via frame evaluation for: {short_range}")
+                    print(f"[+] Clicked matching payout cycle row via frame evaluation for: {display_range}")
                     return
             except Exception:
                 pass
