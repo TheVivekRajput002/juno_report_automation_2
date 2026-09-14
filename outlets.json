@@ -61,5 +61,12 @@
     "zomato_id": "3300011",
     "swiggy_id": "215500",
     "swiggy_account": "account_2"
+  },
+  {
+    "id": "abdullah_hotel",
+    "name": "Abdullah Hotel",
+    "zomato_id": "21735067",
+    "swiggy_id": "1050774",
+    "swiggy_account": ""
   }
 ]
