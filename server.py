@@ -205,6 +205,7 @@ class OutletModel(BaseModel):
     name: str
     zomato_id: str
     swiggy_id: Optional[str] = ""
+    swiggy_account: Optional[str] = ""
 
 
 @app.get("/api/outlets")

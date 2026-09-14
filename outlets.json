@@ -1,26 +1,65 @@
 [
   {
-    "id": "1",
+    "id": "the_paneer_story",
     "name": "The Paneer Story",
     "zomato_id": "22749423",
-    "swiggy_id": "1394282"
+    "swiggy_id": "1394282",
+    "swiggy_account": "account_1"
   },
   {
-    "id": "2",
+    "id": "the_spice_meridian",
     "name": "The Spice Meridian",
     "zomato_id": "22663260",
-    "swiggy_id": "1363315"
+    "swiggy_id": "1363315",
+    "swiggy_account": "account_1"
   },
   {
-    "id": "3",
-    "name": "Babbu Hotel",
-    "zomato_id": "3300011",
-    "swiggy_id": ""
-  },
-  {
-    "id": "4",
+    "id": "biryani_lovers",
     "name": "Biryani Lovers",
     "zomato_id": "22317789",
-    "swiggy_id": ""
+    "swiggy_id": "1263351",
+    "swiggy_account": "account_1"
+  },
+  {
+    "id": "thavusukutti_biryani",
+    "name": "Thavusukutti Biryani",
+    "zomato_id": "22711186",
+    "swiggy_id": "1383269",
+    "swiggy_account": "account_2"
+  },
+  {
+    "id": "suryakant_saoji_19870582",
+    "name": "Suryakant Saoji",
+    "zomato_id": "19870582",
+    "swiggy_id": "412733",
+    "swiggy_account": "account_2"
+  },
+  {
+    "id": "suryakant_saoji_lakadganj_3300652",
+    "name": "Suryakant Saoji Lakadganj, Nagpur",
+    "zomato_id": "3300652",
+    "swiggy_id": "60708",
+    "swiggy_account": "account_2"
+  },
+  {
+    "id": "pintu_saoji_family_restaurant",
+    "name": "Pintu Saoji Family Restaurant",
+    "zomato_id": "22810065",
+    "swiggy_id": "1415645",
+    "swiggy_account": "account_2"
+  },
+  {
+    "id": "babbu_hotel_18975741",
+    "name": "Babbu Hotel",
+    "zomato_id": "18975741",
+    "swiggy_id": "215474",
+    "swiggy_account": "account_2"
+  },
+  {
+    "id": "babbu_hotel_3300011",
+    "name": "Babbu Hotel",
+    "zomato_id": "3300011",
+    "swiggy_id": "215500",
+    "swiggy_account": "account_2"
   }
 ]
