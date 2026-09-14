@@ -8,11 +8,14 @@ from config import (
     DEFAULT_RESTAURANT_ID,
     ZOMATO_LOGIN_URL,
     ZOMATO_DASHBOARD_URL,
+    DEFAULT_WORKSHEET_NAME,
+    GOOGLE_SHEET_URL,
 )
 from scrapers.browser_manager import BrowserManager
 from scrapers.zomato_scraper import ZomatoScraper
 from processors.metric_calculator import MetricCalculator
 from exporters.excel_generator import ExcelReportGenerator
+from exporters.google_sheets_generator import GoogleSheetsReportGenerator
 
 
 def format_date_range_label(start_date: datetime, end_date: datetime) -> str:
@@ -66,6 +69,9 @@ def run_automation(
     date_label: Optional[str] = None,
     restaurant_name: Optional[str] = None,
     restaurant_id: Optional[str] = None,
+    worksheet_name: str = DEFAULT_WORKSHEET_NAME,
+    export_excel: bool = True,
+    export_sheets: bool = True,
 ):
     """Executes scraper, calculator, and report generator pipeline for one or multiple date ranges."""
     # Normalize date_ranges input for backwards-compatibility
@@ -87,9 +93,12 @@ def run_automation(
         print(f"  Target Restaurant: {target_display_name} (ID: {target_display_id})")
     else:
         print(f"  Target Restaurant: {target_display_name}")
+    if export_sheets:
+        print(f"  Target Google Sheet Tab: '{worksheet_name}'")
     print("=" * 60)
 
-    generated_reports = []
+    generated_excel_reports = []
+    generated_sheet_urls = []
 
     with BrowserManager(headless=False) as bm:
         page = bm.get_page()
@@ -133,26 +142,48 @@ def run_automation(
             # Compute all derived formulas and business rules
             metrics = MetricCalculator.calculate_zomato_metrics(extracted_data)
 
-            # Generate styled Excel Report
-            generator = ExcelReportGenerator()
-            report_file = generator.generate_report(
-                zomato_metrics=metrics,
-                restaurant_name=res_name,
-                restaurant_id=res_id,
-                date_range_label=d_label,
-                report_title="Weekly Report",
-            )
-            generated_reports.append(report_file)
+            # 1. Generate styled Excel Report (optional)
+            if export_excel:
+                excel_gen = ExcelReportGenerator()
+                report_file = excel_gen.generate_report(
+                    zomato_metrics=metrics,
+                    restaurant_name=res_name,
+                    restaurant_id=res_id,
+                    date_range_label=d_label,
+                    report_title="Weekly Report",
+                )
+                generated_excel_reports.append(report_file)
+
+            # 2. Insert and format table directly in Google Sheet tab
+            if export_sheets:
+                try:
+                    sheets_gen = GoogleSheetsReportGenerator()
+                    sheet_tab_url = sheets_gen.generate_report(
+                        zomato_metrics=metrics,
+                        restaurant_name=res_name,
+                        restaurant_id=res_id,
+                        date_range_label=d_label,
+                        report_title="Weekly Report",
+                        worksheet_name=worksheet_name,
+                    )
+                    generated_sheet_urls.append(sheet_tab_url)
+                except Exception as e:
+                    print(f"[!] Warning: Could not update Google Sheet: {e}")
 
     print("\n" + "=" * 60)
-    print(f"[✓] Automation Completed Successfully! Generated {len(generated_reports)} report(s):")
-    for r in generated_reports:
-        print(f"    - {r}")
+    print(f"[✓] Automation Completed Successfully!")
+    if generated_excel_reports:
+        print(f"[+] Generated {len(generated_excel_reports)} Excel report(s):")
+        for r in generated_excel_reports:
+            print(f"    - {r}")
+    if generated_sheet_urls:
+        print(f"[+] Updated Google Sheet Tab '{worksheet_name}':")
+        print(f"    - {generated_sheet_urls[-1]}")
     print("=" * 60)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Automate Zomato Partner Report Generation into Excel.")
+    parser = argparse.ArgumentParser(description="Automate Zomato Partner Report Generation into Google Sheets & Excel.")
     parser.add_argument("--setup-login", action="store_true", help="Launch browser to perform initial Google login")
     parser.add_argument("--weekly", nargs="?", const=1, type=int, default=None, help="Generate weekly report(s) for previous N weeks (default: 1)")
     parser.add_argument("--weeks", "-w", type=int, default=None, help="Number of previous weeks to generate reports for (e.g. 1, 2, 3...)")
@@ -160,11 +191,17 @@ def main():
     parser.add_argument("--end-date", type=str, help="Custom end date (YYYY-MM-DD)")
     parser.add_argument("--restaurant", "-r", type=str, default=None, help="Target restaurant name for outlet selector")
     parser.add_argument("--restaurant-id", "--res-id", "-i", type=str, default=None, help="Target restaurant ID for outlet selector")
+    parser.add_argument("--tab", "--worksheet", type=str, default=DEFAULT_WORKSHEET_NAME, help="Target Google Sheet Tab name (default: Automated Reports)")
+    parser.add_argument("--no-sheets", action="store_true", help="Skip Google Sheets export")
+    parser.add_argument("--no-excel", action="store_true", help="Skip local Excel generation")
     parser.add_argument("--test-sample", action="store_true", help="Generate sample verification report with test data")
 
     args = parser.parse_args()
     target_restaurant = args.restaurant
     target_id = args.restaurant_id
+    worksheet_name = args.tab
+    export_excel = not args.no_excel
+    export_sheets = not args.no_sheets
 
     if args.setup_login:
         setup_google_login()
@@ -188,14 +225,25 @@ def main():
             "mx_rejections": 2,
         }
         metrics = MetricCalculator.calculate_zomato_metrics(sample_data)
-        gen = ExcelReportGenerator()
-        gen.generate_report(
-            zomato_metrics=metrics,
-            restaurant_name=target_restaurant or DEFAULT_RESTAURANT_NAME,
-            restaurant_id=target_id or DEFAULT_RESTAURANT_ID,
-            date_range_label="24 - 30 Aug'26",
-            filename="Sample_Weekly_Report.xlsx",
-        )
+        if export_excel:
+            gen = ExcelReportGenerator()
+            gen.generate_report(
+                zomato_metrics=metrics,
+                restaurant_name=target_restaurant or DEFAULT_RESTAURANT_NAME,
+                restaurant_id=target_id or DEFAULT_RESTAURANT_ID,
+                date_range_label="24 - 30 Aug'26",
+                filename="Sample_Weekly_Report.xlsx",
+            )
+        if export_sheets:
+            s_gen = GoogleSheetsReportGenerator()
+            s_gen.generate_report(
+                zomato_metrics=metrics,
+                restaurant_name=target_restaurant or DEFAULT_RESTAURANT_NAME,
+                restaurant_id=target_id or DEFAULT_RESTAURANT_ID,
+                date_range_label="24 - 30 Aug'26",
+                report_title="Weekly Report",
+                worksheet_name=worksheet_name,
+            )
         return
 
     num_weeks = args.weeks if args.weeks is not None else args.weekly
@@ -204,12 +252,26 @@ def main():
             num_weeks = 1
         num_weeks = max(1, int(num_weeks))
         date_ranges = get_weekly_date_ranges(num_weeks)
-        run_automation(date_ranges, restaurant_name=target_restaurant, restaurant_id=target_id)
+        run_automation(
+            date_ranges,
+            restaurant_name=target_restaurant,
+            restaurant_id=target_id,
+            worksheet_name=worksheet_name,
+            export_excel=export_excel,
+            export_sheets=export_sheets,
+        )
         return
 
     if args.start_date and args.end_date:
         start_date, end_date, date_label = get_custom_dates(args.start_date, args.end_date)
-        run_automation([(start_date, end_date, date_label)], restaurant_name=target_restaurant, restaurant_id=target_id)
+        run_automation(
+            [(start_date, end_date, date_label)],
+            restaurant_name=target_restaurant,
+            restaurant_id=target_id,
+            worksheet_name=worksheet_name,
+            export_excel=export_excel,
+            export_sheets=export_sheets,
+        )
         return
 
     # Interactive CLI Menu if no arguments passed
@@ -244,12 +306,26 @@ def main():
             print(f"\n[*] Selected {num_weeks} week(s) to process:")
             for s, e, lbl in date_ranges:
                 print(f"    - {lbl} ({s.strftime('%Y-%m-%d')} to {e.strftime('%Y-%m-%d')})")
-            run_automation(date_ranges, restaurant_name=target_restaurant, restaurant_id=target_id)
+            run_automation(
+                date_ranges,
+                restaurant_name=target_restaurant,
+                restaurant_id=target_id,
+                worksheet_name=worksheet_name,
+                export_excel=export_excel,
+                export_sheets=export_sheets,
+            )
         elif choice == "2":
             start_str = input("Enter start date (YYYY-MM-DD): ").strip()
             end_str = input("Enter end date (YYYY-MM-DD): ").strip()
             start_date, end_date, date_label = get_custom_dates(start_str, end_str)
-            run_automation([(start_date, end_date, date_label)], restaurant_name=target_restaurant, restaurant_id=target_id)
+            run_automation(
+                [(start_date, end_date, date_label)],
+                restaurant_name=target_restaurant,
+                restaurant_id=target_id,
+                worksheet_name=worksheet_name,
+                export_excel=export_excel,
+                export_sheets=export_sheets,
+            )
     elif choice == "3":
         setup_google_login()
     elif choice == "4":

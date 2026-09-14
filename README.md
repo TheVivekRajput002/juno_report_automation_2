@@ -9,8 +9,9 @@ Automated tool to scrape business, financial, and funnel performance data from t
 ```
 report_automation/
 │
-├── config.py                 # Configuration (URLs, directories, persistent profiles)
+├── config.py                 # Configuration (URLs, directories, Google Sheet ID, persistent profiles)
 ├── main.py                   # Orchestrator & CLI interface
+├── service_account.json      # Google Cloud Service Account credentials (ignored by git)
 │
 ├── scrapers/
 │   ├── browser_manager.py    # Playwright browser manager with Google Login & session persistence
@@ -20,7 +21,8 @@ report_automation/
 │   └── metric_calculator.py  # Business logic, derived metrics & formula calculations
 │
 ├── exporters/
-│   └── excel_generator.py    # Generates pixel-perfect styled Excel (.xlsx) reports
+│   ├── excel_generator.py           # Generates styled local Excel (.xlsx) reports
+│   └── google_sheets_generator.py   # Generates styled side-by-side tables in Google Sheets
 │
 ├── reports/                  # Generated Excel reports output directory
 └── requirements.txt          # Project dependencies

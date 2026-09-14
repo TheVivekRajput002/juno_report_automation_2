@@ -16,3 +16,5 @@ reports/*.xlsx
 # Environment variables & secrets
 .env
 *.log
+*service_account*.json
+*credentials*.json

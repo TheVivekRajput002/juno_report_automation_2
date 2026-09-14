@@ -23,3 +23,9 @@ SWIGGY_LOGIN_URL = "https://partner.swiggy.com/login"
 # Default restaurant info (if not extracted dynamically)
 DEFAULT_RESTAURANT_NAME = "Biryani Lovers"
 DEFAULT_RESTAURANT_ID = "22317789"
+
+# Google Sheets Integration
+GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/1KLnQnbQhOwb11W-kmT_UxHJPaCjQuUQinp-lYZs_zRE/edit?usp=sharing"
+SPREADSHEET_ID = "1KLnQnbQhOwb11W-kmT_UxHJPaCjQuUQinp-lYZs_zRE"
+SERVICE_ACCOUNT_FILE = BASE_DIR / "service_account.json"
+DEFAULT_WORKSHEET_NAME = "Automated Reports"
