@@ -108,3 +108,4 @@ python main.py --test-sample
 | **M2O** | In percentage (in report section) |
 | **Mx Rejections** | Rejected orders (under payout section) |
 # juno_report_automation
+# juno_report_automation_2
