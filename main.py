@@ -184,6 +184,8 @@ def run_automation(
 
 def main():
     parser = argparse.ArgumentParser(description="Automate Zomato Partner Report Generation into Google Sheets.")
+    parser.add_argument("--ui", "--web", action="store_true", help="Launch the minimalist Web UI in your browser")
+    parser.add_argument("--port", type=int, default=8501, help="Port for the Web UI (default: 8501)")
     parser.add_argument("--setup-login", action="store_true", help="Launch browser to perform initial Google login")
     parser.add_argument("--weekly", nargs="?", const=1, type=int, default=None, help="Generate weekly report(s) for previous N weeks (default: 1)")
     parser.add_argument("--weeks", "-w", type=int, default=None, help="Number of previous weeks to generate reports for (e.g. 1, 2, 3...)")
@@ -202,6 +204,12 @@ def main():
     worksheet_name = args.tab
     export_excel = args.excel
     export_sheets = not args.no_sheets
+
+    if args.ui:
+        import uvicorn
+        print(f"\n🚀 Launching Report Automation Web UI on http://localhost:{args.port}\n")
+        uvicorn.run("server:app", host="0.0.0.0", port=args.port, reload=False)
+        return
 
     if args.setup_login:
         setup_google_login()
@@ -278,15 +286,21 @@ def main():
     print("\n" + "=" * 50)
     print("      RESTAURANT REPORT AUTOMATION")
     print("=" * 50)
-    print("1. Run Weekly Reports (Specify number of previous weeks)")
-    print("2. Run Custom Date Range (Start Date - End Date)")
-    print("3. Google Login Setup (Save persistent session)")
-    print("4. Generate Sample Report from template data")
-    print("5. Exit")
+    print("1. Launch Web UI (Browser Control Panel) [Recommended]")
+    print("2. Run Weekly Reports (Specify number of previous weeks)")
+    print("3. Run Custom Date Range (Start Date - End Date)")
+    print("4. Google Login Setup (Save persistent session)")
+    print("5. Generate Sample Report from template data")
+    print("6. Exit")
     print("-" * 50)
 
-    choice = input("Select an option (1-5): ").strip()
-    if choice in ["1", "2"]:
+    choice = input("Select an option (1-6): ").strip()
+    if choice == "1":
+        import uvicorn
+        print(f"\n🚀 Launching Report Automation Web UI on http://localhost:8501\n")
+        uvicorn.run("server:app", host="0.0.0.0", port=8501, reload=False)
+        return
+    elif choice in ["2", "3"]:
         res_input = input(f"Enter Restaurant ID or Name [Default: {DEFAULT_RESTAURANT_NAME} / {DEFAULT_RESTAURANT_ID}]: ").strip()
         if res_input:
             if res_input.isdigit():

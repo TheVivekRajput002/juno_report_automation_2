@@ -1,0 +1,26 @@
+[
+  {
+    "id": "1",
+    "name": "The Paneer Story",
+    "zomato_id": "22749423",
+    "swiggy_id": "1394282"
+  },
+  {
+    "id": "2",
+    "name": "The Spice Meridian",
+    "zomato_id": "22663260",
+    "swiggy_id": "1363315"
+  },
+  {
+    "id": "3",
+    "name": "Babbu Hotel",
+    "zomato_id": "3300011",
+    "swiggy_id": ""
+  },
+  {
+    "id": "4",
+    "name": "Biryani Lovers",
+    "zomato_id": "22317789",
+    "swiggy_id": ""
+  }
+]
