@@ -202,50 +202,50 @@ class ExcelReportGenerator:
             zs_m2o = fmt_pct(zm.m2o)
             zs_mx_rejections = zm.mx_rejections
 
-        # Row Definitions: (Line Item Name, type, z_val, s_val, zs_val, highlight, bold)
+        # Row Definitions with dynamic formulas for Z+S column (Col D)
         rows_config = [
-            # 5
-            {"name": "Orders", "type": "int", "z_val": fmt_int(zm.orders) if has_z else "", "s_val": fmt_int(sm.orders) if has_s else "", "zs_val": fmt_int(zs_orders), "highlight": False, "bold": False},
-            # 6
-            {"name": "Subtotal", "type": "int", "z_val": fmt_int(zm.subtotal) if has_z else "", "s_val": fmt_int(sm.subtotal) if has_s else "", "zs_val": fmt_int(zs_subtotal), "highlight": False, "bold": False},
-            # 7
-            {"name": "Total Discount", "type": "int", "z_val": fmt_int(zm.total_discount) if has_z else "", "s_val": fmt_int(sm.total_discount) if has_s else "", "zs_val": fmt_int(zs_total_discount), "highlight": False, "bold": False},
-            # 8
-            {"name": "Sales after discount", "type": "int", "z_val": fmt_int(zm.sales_after_discount) if has_z else "", "s_val": fmt_int(sm.sales_after_discount) if has_s else "", "zs_val": fmt_int(zs_sales_after_discount), "highlight": False, "bold": False},
-            # 9
-            {"name": "Net order value", "type": "int", "z_val": fmt_int(zm.net_order_value) if has_z else "", "s_val": fmt_int(sm.net_order_value) if has_s else "", "zs_val": fmt_int(zs_net_order_value), "highlight": False, "bold": False},
-            # 10
-            {"name": "Packaging Charges", "type": "int", "z_val": fmt_int(zm.packaging_charges) if has_z else "", "s_val": fmt_int(sm.packaging_charges) if has_s else "", "zs_val": fmt_int(zs_packaging), "highlight": False, "bold": False},
-            # 11
-            {"name": "Commission", "type": "int", "z_val": fmt_int(zm.commission) if has_z else "", "s_val": fmt_int(sm.commission) if has_s else "", "zs_val": fmt_int(zs_commission), "highlight": False, "bold": False},
-            # 12
-            {"name": "ads", "type": "int", "z_val": fmt_int(zm.ads) if has_z else "", "s_val": fmt_int(sm.ads) if has_s else "", "zs_val": fmt_int(zs_ads), "highlight": False, "bold": False},
+            # 5: Orders
+            {"name": "Orders", "type": "int", "z_val": fmt_int(zm.orders) if has_z else "", "s_val": fmt_int(sm.orders) if has_s else "", "zs_val": "=B5+C5", "highlight": False, "bold": False},
+            # 6: Subtotal
+            {"name": "Subtotal", "type": "int", "z_val": fmt_int(zm.subtotal) if has_z else "", "s_val": fmt_int(sm.subtotal) if has_s else "", "zs_val": "=B6+C6", "highlight": False, "bold": False},
+            # 7: Total Discount
+            {"name": "Total Discount", "type": "int", "z_val": fmt_int(zm.total_discount) if has_z else "", "s_val": fmt_int(sm.total_discount) if has_s else "", "zs_val": "=B7+C7", "highlight": False, "bold": False},
+            # 8: Sales after discount
+            {"name": "Sales after discount", "type": "int", "z_val": fmt_int(zm.sales_after_discount) if has_z else "", "s_val": fmt_int(sm.sales_after_discount) if has_s else "", "zs_val": "=B8+C8", "highlight": False, "bold": False},
+            # 9: Net order value
+            {"name": "Net order value", "type": "dec", "z_val": fmt_int(zm.net_order_value) if has_z else "", "s_val": fmt_int(sm.net_order_value) if has_s else "", "zs_val": "=IFERROR(ROUND(D8/D5, 2), 0)", "highlight": False, "bold": False},
+            # 10: Packaging Charges
+            {"name": "Packaging Charges", "type": "int", "z_val": fmt_int(zm.packaging_charges) if has_z else "", "s_val": fmt_int(sm.packaging_charges) if has_s else "", "zs_val": "=B10+C10", "highlight": False, "bold": False},
+            # 11: Commission
+            {"name": "Commission", "type": "int", "z_val": fmt_int(zm.commission) if has_z else "", "s_val": fmt_int(sm.commission) if has_s else "", "zs_val": "=B11+C11", "highlight": False, "bold": False},
+            # 12: ads
+            {"name": "ads", "type": "int", "z_val": fmt_int(zm.ads) if has_z else "", "s_val": fmt_int(sm.ads) if has_s else "", "zs_val": "=B12+C12", "highlight": False, "bold": False},
             # 13: Cash in Bank (Highlighted)
-            {"name": "Cash in Bank", "type": "int", "z_val": fmt_int(zm.cash_in_bank) if has_z else "", "s_val": fmt_int(sm.cash_in_bank) if has_s else "", "zs_val": fmt_int(zs_cash_in_bank), "highlight": True, "bold": True},
-            # 14
-            {"name": "Discount %", "type": "str", "z_val": fmt_pct(zm.discount_pct) if has_z else "", "s_val": fmt_pct(sm.discount_pct) if has_s else "", "zs_val": zs_discount_pct, "highlight": False, "bold": False},
-            # 15
-            {"name": "Commission %", "type": "str", "z_val": fmt_pct(zm.commission_pct) if has_z else "", "s_val": fmt_pct(sm.commission_pct) if has_s else "", "zs_val": zs_commission_pct, "highlight": False, "bold": False},
-            # 16
-            {"name": "Ads %", "type": "str", "z_val": fmt_pct(zm.ads_pct) if has_z else "", "s_val": fmt_pct(sm.ads_pct) if has_s else "", "zs_val": zs_ads_pct, "highlight": False, "bold": False},
+            {"name": "Cash in Bank", "type": "int", "z_val": fmt_int(zm.cash_in_bank) if has_z else "", "s_val": fmt_int(sm.cash_in_bank) if has_s else "", "zs_val": "=B13+C13", "highlight": True, "bold": True},
+            # 14: Discount %
+            {"name": "Discount %", "type": "pct", "z_val": fmt_pct(zm.discount_pct) if has_z else "", "s_val": fmt_pct(sm.discount_pct) if has_s else "", "zs_val": "=IFERROR(D7/D6, 0)", "highlight": False, "bold": False},
+            # 15: Commission %
+            {"name": "Commission %", "type": "pct", "z_val": fmt_pct(zm.commission_pct) if has_z else "", "s_val": fmt_pct(sm.commission_pct) if has_s else "", "zs_val": "=IFERROR(D11/D8, 0)", "highlight": False, "bold": False},
+            # 16: Ads %
+            {"name": "Ads %", "type": "pct", "z_val": fmt_pct(zm.ads_pct) if has_z else "", "s_val": fmt_pct(sm.ads_pct) if has_s else "", "zs_val": "=IFERROR(D12/D6, 0)", "highlight": False, "bold": False},
             # 17: Payout % (Highlighted)
-            {"name": "Payout %", "type": "str", "z_val": fmt_pct(zm.payout_pct) if has_z else "", "s_val": fmt_pct(sm.payout_pct) if has_s else "", "zs_val": zs_payout_pct, "highlight": True, "bold": True},
-            # 18
-            {"name": "Visibility", "type": "str", "z_val": fmt_pct(zm.visibility) if has_z else "", "s_val": fmt_pct(sm.visibility) if has_s else "", "zs_val": zs_visibility, "highlight": False, "bold": False},
-            # 19
-            {"name": "KPT", "type": "int", "z_val": fmt_int(zm.kpt) if has_z else "", "s_val": fmt_int(sm.kpt) if has_s else "", "zs_val": fmt_int(zs_kpt), "highlight": False, "bold": False},
-            # 20
-            {"name": "Impressions", "type": "int", "z_val": fmt_int(zm.impressions) if has_z else "", "s_val": fmt_int(sm.impressions) if has_s else "", "zs_val": fmt_int(zs_impressions), "highlight": False, "bold": False},
-            # 21
-            {"name": "I2M", "type": "str", "z_val": fmt_pct(zm.i2m) if has_z else "", "s_val": fmt_pct(sm.i2m) if has_s else "", "zs_val": zs_i2m, "highlight": False, "bold": False},
-            # 22
-            {"name": "Menu Opens", "type": "int", "z_val": fmt_int(zm.menu_opens) if has_z else "", "s_val": fmt_int(sm.menu_opens) if has_s else "", "zs_val": fmt_int(zs_menu_opens), "highlight": False, "bold": False},
-            # 23
-            {"name": "C2O", "type": "str", "z_val": fmt_pct(zm.c2o) if has_z else "", "s_val": fmt_pct(sm.c2o) if has_s else "", "zs_val": zs_c2o, "highlight": False, "bold": False},
-            # 24
-            {"name": "M2O", "type": "str", "z_val": fmt_pct(zm.m2o) if has_z else "", "s_val": fmt_pct(sm.m2o) if has_s else "", "zs_val": zs_m2o, "highlight": False, "bold": True},
-            # 25
-            {"name": "Mx Rejections", "type": "int", "z_val": fmt_int(zm.mx_rejections) if has_z else "", "s_val": fmt_int(sm.mx_rejections) if has_s else "", "zs_val": fmt_int(zs_mx_rejections), "highlight": False, "bold": False},
+            {"name": "Payout %", "type": "pct", "z_val": fmt_pct(zm.payout_pct) if has_z else "", "s_val": fmt_pct(sm.payout_pct) if has_s else "", "zs_val": "=IFERROR(D13/D6, 0)", "highlight": True, "bold": True},
+            # 18: Visibility
+            {"name": "Visibility", "type": "pct", "z_val": fmt_pct(zm.visibility) if has_z else "", "s_val": fmt_pct(sm.visibility) if has_s else "", "zs_val": "=IFERROR(AVERAGE(B18, C18), 0)", "highlight": False, "bold": False},
+            # 19: KPT
+            {"name": "KPT", "type": "kpt", "z_val": fmt_int(zm.kpt) if has_z else "", "s_val": fmt_int(sm.kpt) if has_s else "", "zs_val": "=IFERROR(AVERAGE(B19, C19), 0)", "highlight": False, "bold": False},
+            # 20: Impressions
+            {"name": "Impressions", "type": "int", "z_val": fmt_int(zm.impressions) if has_z else "", "s_val": fmt_int(sm.impressions) if has_s else "", "zs_val": "=B20+C20", "highlight": False, "bold": False},
+            # 21: I2M
+            {"name": "I2M", "type": "pct", "z_val": fmt_pct(zm.i2m) if has_z else "", "s_val": fmt_pct(sm.i2m) if has_s else "", "zs_val": "=IFERROR(AVERAGE(B21, C21), 0)", "highlight": False, "bold": False},
+            # 22: Menu Opens
+            {"name": "Menu Opens", "type": "int", "z_val": fmt_int(zm.menu_opens) if has_z else "", "s_val": fmt_int(sm.menu_opens) if has_s else "", "zs_val": "=B22+C22", "highlight": False, "bold": False},
+            # 23: C2O
+            {"name": "C2O", "type": "pct", "z_val": fmt_pct(zm.c2o) if has_z else "", "s_val": fmt_pct(sm.c2o) if has_s else "", "zs_val": "=IFERROR(AVERAGE(B23, C23), 0)", "highlight": False, "bold": False},
+            # 24: M2O
+            {"name": "M2O", "type": "pct", "z_val": fmt_pct(zm.m2o) if has_z else "", "s_val": fmt_pct(sm.m2o) if has_s else "", "zs_val": "=IFERROR(AVERAGE(B24, C24), 0)", "highlight": False, "bold": True},
+            # 25: Mx Rejections
+            {"name": "Mx Rejections", "type": "int", "z_val": fmt_int(zm.mx_rejections) if has_z else "", "s_val": fmt_int(sm.mx_rejections) if has_s else "", "zs_val": "=B25+C25", "highlight": False, "bold": False},
         ]
 
         # Populate rows
@@ -258,7 +258,7 @@ class ExcelReportGenerator:
             if item["highlight"]:
                 cell_a.fill = fill_highlight
 
-            # Zomato value (Col B) - Direct pre-calculated value
+            # Zomato value (Col B)
             cell_b = ws.cell(row=idx, column=2, value=item["z_val"])
             cell_b.font = font_bold if item["bold"] else font_regular
             cell_b.alignment = align_center
@@ -266,7 +266,7 @@ class ExcelReportGenerator:
             if item["highlight"]:
                 cell_b.fill = fill_highlight
 
-            # Swiggy value (Col C) - Direct pre-calculated value
+            # Swiggy value (Col C)
             cell_c = ws.cell(row=idx, column=3, value=item["s_val"])
             cell_c.font = font_bold if item["bold"] else font_regular
             cell_c.alignment = align_center
@@ -274,7 +274,7 @@ class ExcelReportGenerator:
             if item["highlight"]:
                 cell_c.fill = fill_highlight
 
-            # Z+S value (Col D) - Direct pre-calculated value
+            # Z+S value (Col D) - Live spreadsheet formula
             cell_d = ws.cell(row=idx, column=4, value=item["zs_val"])
             cell_d.font = font_bold if item["bold"] else font_regular
             cell_d.alignment = align_center
@@ -288,10 +288,12 @@ class ExcelReportGenerator:
                 c = ws.cell(row=idx, column=c_idx)
                 if format_type == "int":
                     c.number_format = "#,##0"
-                elif format_type == "num":
-                    c.number_format = "#,##0"
-                elif format_type == "str":
-                    c.number_format = "@"
+                elif format_type == "dec":
+                    c.number_format = "#,##0.00"
+                elif format_type == "kpt":
+                    c.number_format = "0.0"
+                elif format_type == "pct":
+                    c.number_format = "0.00%"
 
         # Set Column Widths
         column_widths = {

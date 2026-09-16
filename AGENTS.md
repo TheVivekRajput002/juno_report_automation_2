@@ -1,8 +1,8 @@
 # Report Automation Guidelines & Rules
 
-## 1. Excel Cell Value Formatting & Copy-Paste Rules
-- **Direct Evaluated Values Only**: Never write uncalculated formula strings (such as `"=B6-B7"` or `"=IF(B5>0,B8/B5,0)"`) into openpyxl Excel cells. Openpyxl does not compute formulas, which causes copy-pasted cells to paste as `0`, `TRUE`/`FALSE`, or `#VALUE!`.
-- Always compute and write the exact pre-calculated numeric values directly into the cell values (`z_val`, `zs_val`).
+## 1. Google Sheets & Excel Z+S Formula Rules
+- **Dynamic Formulas for Z+S**: The Z+S combined column must always contain live spreadsheet formulas referencing the Zomato and Swiggy columns (e.g. `={Z_col}{r}+{S_col}{r}`, `=IFERROR(ROUND({ZS_col}{r_sales}/{ZS_col}{r_orders}, 2), 0)`, `=IFERROR(AVERAGE({Z_col}{r}, {S_col}{r}), 0)`). This ensures the combined column dynamically recalculates whenever platform data is updated.
+- **Cell Number Formatting**: Cells containing formulas (such as percentages and currency) must have explicit `numberFormat` applied (`0.00%` for percentages, `#,##0` for integer numbers/currencies, `#,##0.00` for decimals, `0.0` for KPT).
 
 ## 2. Percentage Metrics Representation
 All percentage metrics in reports must consistently be written as formatted percentage strings with the `%` symbol (`value * 100 %`, e.g., `"21.23%"`, `"85.50%"`):

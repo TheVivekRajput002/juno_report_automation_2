@@ -222,7 +222,8 @@ export class GoogleSheetsClient {
     reportTitle = "Weekly Report",
     worksheetName = CONFIG.DEFAULT_WORKSHEET_NAME,
     spreadsheetId = this.spreadsheetId,
-    startCol = null
+    startCol = null,
+    startRow = 0
   }) {
     const token = await this.getAccessToken();
     const sheetProps = await this.getOrCreateWorksheet(worksheetName, spreadsheetId);
@@ -233,7 +234,11 @@ export class GoogleSheetsClient {
     }
 
     const endCol = startCol + 4; // 4 columns: Line Items, Zomato, Swiggy, Z+S
-    const rowsConfig = MetricCalculator.buildRowsConfig(zomatoMetrics, swiggyMetrics);
+    const rowsConfig = MetricCalculator.buildRowsConfig(zomatoMetrics, swiggyMetrics, {
+      startCol,
+      startRow,
+      useFormulas: true
+    });
 
     const titleText = `${restaurantName} (Id: ${restaurantId})`;
 
@@ -272,7 +277,9 @@ export class GoogleSheetsClient {
     // 3. Write Cell Values using values.update
     const startColA1 = colIndexToA1(startCol);
     const endColA1 = colIndexToA1(endCol - 1);
-    const writeRange = `'${worksheetName}'!${startColA1}1:${endColA1}25`;
+    const startRowA1 = startRow + 1;
+    const endRowA1 = startRow + 25;
+    const writeRange = `'${worksheetName}'!${startColA1}${startRowA1}:${endColA1}${endRowA1}`;
 
     const valRes = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(writeRange)}?valueInputOption=USER_ENTERED`,
@@ -299,8 +306,8 @@ export class GoogleSheetsClient {
         mergeCells: {
           range: {
             sheetId: sheetId,
-            startRowIndex: rIdx,
-            endRowIndex: rIdx + 1,
+            startRowIndex: startRow + rIdx,
+            endRowIndex: startRow + rIdx + 1,
             startColumnIndex: startCol,
             endColumnIndex: endCol
           },
@@ -319,8 +326,8 @@ export class GoogleSheetsClient {
       updateBorders: {
         range: {
           sheetId: sheetId,
-          startRowIndex: 0,
-          endRowIndex: 25,
+          startRowIndex: startRow,
+          endRowIndex: startRow + 25,
           startColumnIndex: startCol,
           endColumnIndex: endCol
         },
@@ -338,8 +345,8 @@ export class GoogleSheetsClient {
       repeatCell: {
         range: {
           sheetId: sheetId,
-          startRowIndex: 0,
-          endRowIndex: 2,
+          startRowIndex: startRow,
+          endRowIndex: startRow + 2,
           startColumnIndex: startCol,
           endColumnIndex: endCol
         },
@@ -360,8 +367,8 @@ export class GoogleSheetsClient {
       repeatCell: {
         range: {
           sheetId: sheetId,
-          startRowIndex: 2,
-          endRowIndex: 3,
+          startRowIndex: startRow + 2,
+          endRowIndex: startRow + 3,
           startColumnIndex: startCol,
           endColumnIndex: endCol
         },
@@ -389,8 +396,8 @@ export class GoogleSheetsClient {
         repeatCell: {
           range: {
             sheetId: sheetId,
-            startRowIndex: 3,
-            endRowIndex: 4,
+            startRowIndex: startRow + 3,
+            endRowIndex: startRow + 4,
             startColumnIndex: startCol + cOffset,
             endColumnIndex: startCol + cOffset + 1
           },
@@ -407,13 +414,13 @@ export class GoogleSheetsClient {
       });
     });
 
-    // Format Data Rows (Rows 5-25, 0-indexed 4-25)
+    // Format Data Rows (Rows 5-25)
     requests.push({
       repeatCell: {
         range: {
           sheetId: sheetId,
-          startRowIndex: 4,
-          endRowIndex: 25,
+          startRowIndex: startRow + 4,
+          endRowIndex: startRow + 25,
           startColumnIndex: startCol,
           endColumnIndex: endCol
         },
@@ -428,9 +435,43 @@ export class GoogleSheetsClient {
       }
     });
 
-    // Highlights & Bold Rows
+    // Number formatting & highlights per data row
     rowsConfig.forEach((item, idx) => {
-      const rNum = 4 + idx;
+      const rNum = startRow + 4 + idx;
+
+      // Apply specific numberFormat
+      let numFmt = null;
+      if (item.formatType === "pct") {
+        numFmt = { type: "PERCENT", pattern: "0.00%" };
+      } else if (item.formatType === "int") {
+        numFmt = { type: "NUMBER", pattern: "#,##0" };
+      } else if (item.formatType === "dec") {
+        numFmt = { type: "NUMBER", pattern: "#,##0.00" };
+      } else if (item.formatType === "kpt") {
+        numFmt = { type: "NUMBER", pattern: "0.0" };
+      }
+
+      if (numFmt) {
+        requests.push({
+          repeatCell: {
+            range: {
+              sheetId: sheetId,
+              startRowIndex: rNum,
+              endRowIndex: rNum + 1,
+              startColumnIndex: startCol + 1,
+              endColumnIndex: endCol
+            },
+            cell: {
+              userEnteredFormat: {
+                numberFormat: numFmt
+              }
+            },
+            fields: "userEnteredFormat.numberFormat"
+          }
+        });
+      }
+
+      // Highlights & Bold
       if (item.highlight) {
         requests.push({
           repeatCell: {

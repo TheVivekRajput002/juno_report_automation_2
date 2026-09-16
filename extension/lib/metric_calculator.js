@@ -48,6 +48,17 @@ export function fmtInt(val) {
   return Math.round(Number(val));
 }
 
+export function colIndexToA1(cIdx) {
+  let result = "";
+  let c = cIdx + 1;
+  while (c > 0) {
+    const remainder = (c - 1) % 26;
+    result = String.fromCharCode(65 + remainder) + result;
+    c = Math.floor((c - 1) / 26);
+  }
+  return result;
+}
+
 export class MetricCalculator {
   static calculateZomatoMetrics(raw) {
     const orders = cleanNumber(
@@ -188,14 +199,48 @@ export class MetricCalculator {
 
   /**
    * Generates the 21 row definitions for Google Sheets / Excel table matching the exact template.
+   * Uses dynamic formulas for the Z+S column referencing Zomato and Swiggy columns.
    */
-  static buildRowsConfig(zm, sm = null) {
+  static buildRowsConfig(zm, sm = null, options = {}) {
     const hasZ = zm !== null;
     const hasS = sm !== null;
     const z = zm || {};
     const s = sm || {};
 
-    // Calculate Z+S combined
+    const startCol = options.startCol !== undefined ? options.startCol : 0;
+    const startRow = options.startRow !== undefined ? options.startRow : 0;
+    const useFormulas = options.useFormulas !== undefined ? options.useFormulas : true;
+
+    // A1 notation columns
+    const zCol = colIndexToA1(startCol + 1);
+    const sCol = colIndexToA1(startCol + 2);
+    const zsCol = colIndexToA1(startCol + 3);
+
+    // 1-indexed row numbers: Table Row 1-3 headers, Row 4 column titles, Row 5+ data rows
+    const rBase = startRow + 5;
+    const rOrders = rBase + 0;
+    const rSubtotal = rBase + 1;
+    const rDiscount = rBase + 2;
+    const rSales = rBase + 3;
+    const rNov = rBase + 4;
+    const rPkg = rBase + 5;
+    const rComm = rBase + 6;
+    const rAds = rBase + 7;
+    const rCib = rBase + 8;
+    const rDiscPct = rBase + 9;
+    const rCommPct = rBase + 10;
+    const rAdsPct = rBase + 11;
+    const rPayoutPct = rBase + 12;
+    const rVis = rBase + 13;
+    const rKpt = rBase + 14;
+    const rImp = rBase + 15;
+    const rI2m = rBase + 16;
+    const rMenu = rBase + 17;
+    const rC2o = rBase + 18;
+    const rM2o = rBase + 19;
+    const rMx = rBase + 20;
+
+    // Pre-calculated values (used as fallback or for direct calculation)
     const zs_orders = (z.orders || 0) + (s.orders || 0);
     const zs_subtotal = Number(((z.subtotal || 0) + (s.subtotal || 0)).toFixed(2));
     const zs_total_discount = Number(((z.total_discount || 0) + (s.total_discount || 0)).toFixed(2));
@@ -237,27 +282,216 @@ export class MetricCalculator {
     const zs_mx_rejections = (z.mx_rejections || 0) + (s.mx_rejections || 0);
 
     return [
-      { name: "Orders", z_val: hasZ ? fmtInt(z.orders) : "", s_val: hasS ? fmtInt(s.orders) : "", zs_val: fmtInt(zs_orders), highlight: false, bold: false },
-      { name: "Subtotal", z_val: hasZ ? fmtInt(z.subtotal) : "", s_val: hasS ? fmtInt(s.subtotal) : "", zs_val: fmtInt(zs_subtotal), highlight: false, bold: false },
-      { name: "Total Discount", z_val: hasZ ? fmtInt(z.total_discount) : "", s_val: hasS ? fmtInt(s.total_discount) : "", zs_val: fmtInt(zs_total_discount), highlight: false, bold: false },
-      { name: "Sales after discount", z_val: hasZ ? fmtInt(z.sales_after_discount) : "", s_val: hasS ? fmtInt(s.sales_after_discount) : "", zs_val: fmtInt(zs_sales_after_discount), highlight: false, bold: false },
-      { name: "Net order value", z_val: hasZ ? fmtInt(z.net_order_value) : "", s_val: hasS ? fmtInt(s.net_order_value) : "", zs_val: fmtInt(zs_net_order_value), highlight: false, bold: false },
-      { name: "Packaging Charges", z_val: hasZ ? fmtInt(z.packaging_charges) : "", s_val: hasS ? fmtInt(s.packaging_charges) : "", zs_val: fmtInt(zs_packaging), highlight: false, bold: false },
-      { name: "Commission", z_val: hasZ ? fmtInt(z.commission) : "", s_val: hasS ? fmtInt(s.commission) : "", zs_val: fmtInt(zs_commission), highlight: false, bold: false },
-      { name: "ads", z_val: hasZ ? fmtInt(z.ads) : "", s_val: hasS ? fmtInt(s.ads) : "", zs_val: fmtInt(zs_ads), highlight: false, bold: false },
-      { name: "Cash in Bank", z_val: hasZ ? fmtInt(z.cash_in_bank) : "", s_val: hasS ? fmtInt(s.cash_in_bank) : "", zs_val: fmtInt(zs_cash_in_bank), highlight: true, bold: true },
-      { name: "Discount %", z_val: hasZ ? fmtPct(z.discount_pct) : "", s_val: hasS ? fmtPct(s.discount_pct) : "", zs_val: zs_discount_pct, highlight: false, bold: false },
-      { name: "Commission %", z_val: hasZ ? fmtPct(z.commission_pct) : "", s_val: hasS ? fmtPct(s.commission_pct) : "", zs_val: zs_commission_pct, highlight: false, bold: false },
-      { name: "Ads %", z_val: hasZ ? fmtPct(z.ads_pct) : "", s_val: hasS ? fmtPct(s.ads_pct) : "", zs_val: zs_ads_pct, highlight: false, bold: false },
-      { name: "Payout %", z_val: hasZ ? fmtPct(z.payout_pct) : "", s_val: hasS ? fmtPct(s.payout_pct) : "", zs_val: zs_payout_pct, highlight: true, bold: true },
-      { name: "Visibility", z_val: hasZ ? fmtPct(z.visibility) : "", s_val: hasS ? fmtPct(s.visibility) : "", zs_val: zs_visibility, highlight: false, bold: false },
-      { name: "KPT", z_val: hasZ ? fmtInt(z.kpt) : "", s_val: hasS ? fmtInt(s.kpt) : "", zs_val: fmtInt(zs_kpt), highlight: false, bold: false },
-      { name: "Impressions", z_val: hasZ ? fmtInt(z.impressions) : "", s_val: hasS ? fmtInt(s.impressions) : "", zs_val: fmtInt(zs_impressions), highlight: false, bold: false },
-      { name: "I2M", z_val: hasZ ? fmtPct(z.i2m) : "", s_val: hasS ? fmtPct(s.i2m) : "", zs_val: zs_i2m, highlight: false, bold: false },
-      { name: "Menu Opens", z_val: hasZ ? fmtInt(z.menu_opens) : "", s_val: hasS ? fmtInt(s.menu_opens) : "", zs_val: fmtInt(zs_menu_opens), highlight: false, bold: false },
-      { name: "C2O", z_val: hasZ ? fmtPct(z.c2o) : "", s_val: hasS ? fmtPct(s.c2o) : "", zs_val: zs_c2o, highlight: false, bold: false },
-      { name: "M2O", z_val: hasZ ? fmtPct(z.m2o) : "", s_val: hasS ? fmtPct(s.m2o) : "", zs_val: zs_m2o, highlight: false, bold: true },
-      { name: "Mx Rejections", z_val: hasZ ? fmtInt(z.mx_rejections) : "", s_val: hasS ? fmtInt(s.mx_rejections) : "", zs_val: fmtInt(zs_mx_rejections), highlight: false, bold: false }
+      {
+        name: "Orders",
+        formatType: "int",
+        z_val: hasZ ? fmtInt(z.orders) : "",
+        s_val: hasS ? fmtInt(s.orders) : "",
+        zs_val: useFormulas ? `=${zCol}${rOrders}+${sCol}${rOrders}` : fmtInt(zs_orders),
+        zs_calculated: fmtInt(zs_orders),
+        highlight: false,
+        bold: false
+      },
+      {
+        name: "Subtotal",
+        formatType: "int",
+        z_val: hasZ ? fmtInt(z.subtotal) : "",
+        s_val: hasS ? fmtInt(s.subtotal) : "",
+        zs_val: useFormulas ? `=${zCol}${rSubtotal}+${sCol}${rSubtotal}` : fmtInt(zs_subtotal),
+        zs_calculated: fmtInt(zs_subtotal),
+        highlight: false,
+        bold: false
+      },
+      {
+        name: "Total Discount",
+        formatType: "int",
+        z_val: hasZ ? fmtInt(z.total_discount) : "",
+        s_val: hasS ? fmtInt(s.total_discount) : "",
+        zs_val: useFormulas ? `=${zCol}${rDiscount}+${sCol}${rDiscount}` : fmtInt(zs_total_discount),
+        zs_calculated: fmtInt(zs_total_discount),
+        highlight: false,
+        bold: false
+      },
+      {
+        name: "Sales after discount",
+        formatType: "int",
+        z_val: hasZ ? fmtInt(z.sales_after_discount) : "",
+        s_val: hasS ? fmtInt(s.sales_after_discount) : "",
+        zs_val: useFormulas ? `=${zCol}${rSales}+${sCol}${rSales}` : fmtInt(zs_sales_after_discount),
+        zs_calculated: fmtInt(zs_sales_after_discount),
+        highlight: false,
+        bold: false
+      },
+      {
+        name: "Net order value",
+        formatType: "dec",
+        z_val: hasZ ? fmtInt(z.net_order_value) : "",
+        s_val: hasS ? fmtInt(s.net_order_value) : "",
+        zs_val: useFormulas ? `=IFERROR(ROUND(${zsCol}${rSales}/${zsCol}${rOrders}, 2), 0)` : fmtInt(zs_net_order_value),
+        zs_calculated: fmtInt(zs_net_order_value),
+        highlight: false,
+        bold: false
+      },
+      {
+        name: "Packaging Charges",
+        formatType: "int",
+        z_val: hasZ ? fmtInt(z.packaging_charges) : "",
+        s_val: hasS ? fmtInt(s.packaging_charges) : "",
+        zs_val: useFormulas ? `=${zCol}${rPkg}+${sCol}${rPkg}` : fmtInt(zs_packaging),
+        zs_calculated: fmtInt(zs_packaging),
+        highlight: false,
+        bold: false
+      },
+      {
+        name: "Commission",
+        formatType: "int",
+        z_val: hasZ ? fmtInt(z.commission) : "",
+        s_val: hasS ? fmtInt(s.commission) : "",
+        zs_val: useFormulas ? `=${zCol}${rComm}+${sCol}${rComm}` : fmtInt(zs_commission),
+        zs_calculated: fmtInt(zs_commission),
+        highlight: false,
+        bold: false
+      },
+      {
+        name: "ads",
+        formatType: "int",
+        z_val: hasZ ? fmtInt(z.ads) : "",
+        s_val: hasS ? fmtInt(s.ads) : "",
+        zs_val: useFormulas ? `=${zCol}${rAds}+${sCol}${rAds}` : fmtInt(zs_ads),
+        zs_calculated: fmtInt(zs_ads),
+        highlight: false,
+        bold: false
+      },
+      {
+        name: "Cash in Bank",
+        formatType: "int",
+        z_val: hasZ ? fmtInt(z.cash_in_bank) : "",
+        s_val: hasS ? fmtInt(s.cash_in_bank) : "",
+        zs_val: useFormulas ? `=${zCol}${rCib}+${sCol}${rCib}` : fmtInt(zs_cash_in_bank),
+        zs_calculated: fmtInt(zs_cash_in_bank),
+        highlight: true,
+        bold: true
+      },
+      {
+        name: "Discount %",
+        formatType: "pct",
+        z_val: hasZ ? fmtPct(z.discount_pct) : "",
+        s_val: hasS ? fmtPct(s.discount_pct) : "",
+        zs_val: useFormulas ? `=IFERROR(${zsCol}${rDiscount}/${zsCol}${rSubtotal}, 0)` : zs_discount_pct,
+        zs_calculated: zs_discount_pct,
+        highlight: false,
+        bold: false
+      },
+      {
+        name: "Commission %",
+        formatType: "pct",
+        z_val: hasZ ? fmtPct(z.commission_pct) : "",
+        s_val: hasS ? fmtPct(s.commission_pct) : "",
+        zs_val: useFormulas ? `=IFERROR(${zsCol}${rComm}/${zsCol}${rSales}, 0)` : zs_commission_pct,
+        zs_calculated: zs_commission_pct,
+        highlight: false,
+        bold: false
+      },
+      {
+        name: "Ads %",
+        formatType: "pct",
+        z_val: hasZ ? fmtPct(z.ads_pct) : "",
+        s_val: hasS ? fmtPct(s.ads_pct) : "",
+        zs_val: useFormulas ? `=IFERROR(${zsCol}${rAds}/${zsCol}${rSubtotal}, 0)` : zs_ads_pct,
+        zs_calculated: zs_ads_pct,
+        highlight: false,
+        bold: false
+      },
+      {
+        name: "Payout %",
+        formatType: "pct",
+        z_val: hasZ ? fmtPct(z.payout_pct) : "",
+        s_val: hasS ? fmtPct(s.payout_pct) : "",
+        zs_val: useFormulas ? `=IFERROR(${zsCol}${rCib}/${zsCol}${rSubtotal}, 0)` : zs_payout_pct,
+        zs_calculated: zs_payout_pct,
+        highlight: true,
+        bold: true
+      },
+      {
+        name: "Visibility",
+        formatType: "pct",
+        z_val: hasZ ? fmtPct(z.visibility) : "",
+        s_val: hasS ? fmtPct(s.visibility) : "",
+        zs_val: useFormulas ? `=IFERROR(AVERAGE(${zCol}${rVis}, ${sCol}${rVis}), 0)` : zs_visibility,
+        zs_calculated: zs_visibility,
+        highlight: false,
+        bold: false
+      },
+      {
+        name: "KPT",
+        formatType: "kpt",
+        z_val: hasZ ? fmtInt(z.kpt) : "",
+        s_val: hasS ? fmtInt(s.kpt) : "",
+        zs_val: useFormulas ? `=IFERROR(AVERAGE(${zCol}${rKpt}, ${sCol}${rKpt}), 0)` : fmtInt(zs_kpt),
+        zs_calculated: fmtInt(zs_kpt),
+        highlight: false,
+        bold: false
+      },
+      {
+        name: "Impressions",
+        formatType: "int",
+        z_val: hasZ ? fmtInt(z.impressions) : "",
+        s_val: hasS ? fmtInt(s.impressions) : "",
+        zs_val: useFormulas ? `=${zCol}${rImp}+${sCol}${rImp}` : fmtInt(zs_impressions),
+        zs_calculated: fmtInt(zs_impressions),
+        highlight: false,
+        bold: false
+      },
+      {
+        name: "I2M",
+        formatType: "pct",
+        z_val: hasZ ? fmtPct(z.i2m) : "",
+        s_val: hasS ? fmtPct(s.i2m) : "",
+        zs_val: useFormulas ? `=IFERROR(AVERAGE(${zCol}${rI2m}, ${sCol}${rI2m}), 0)` : zs_i2m,
+        zs_calculated: zs_i2m,
+        highlight: false,
+        bold: false
+      },
+      {
+        name: "Menu Opens",
+        formatType: "int",
+        z_val: hasZ ? fmtInt(z.menu_opens) : "",
+        s_val: hasS ? fmtInt(s.menu_opens) : "",
+        zs_val: useFormulas ? `=${zCol}${rMenu}+${sCol}${rMenu}` : fmtInt(zs_menu_opens),
+        zs_calculated: fmtInt(zs_menu_opens),
+        highlight: false,
+        bold: false
+      },
+      {
+        name: "C2O",
+        formatType: "pct",
+        z_val: hasZ ? fmtPct(z.c2o) : "",
+        s_val: hasS ? fmtPct(s.c2o) : "",
+        zs_val: useFormulas ? `=IFERROR(AVERAGE(${zCol}${rC2o}, ${sCol}${rC2o}), 0)` : zs_c2o,
+        zs_calculated: zs_c2o,
+        highlight: false,
+        bold: false
+      },
+      {
+        name: "M2O",
+        formatType: "pct",
+        z_val: hasZ ? fmtPct(z.m2o) : "",
+        s_val: hasS ? fmtPct(s.m2o) : "",
+        zs_val: useFormulas ? `=IFERROR(AVERAGE(${zCol}${rM2o}, ${sCol}${rM2o}), 0)` : zs_m2o,
+        zs_calculated: zs_m2o,
+        highlight: false,
+        bold: true
+      },
+      {
+        name: "Mx Rejections",
+        formatType: "int",
+        z_val: hasZ ? fmtInt(z.mx_rejections) : "",
+        s_val: hasS ? fmtInt(s.mx_rejections) : "",
+        zs_val: useFormulas ? `=${zCol}${rMx}+${sCol}${rMx}` : fmtInt(zs_mx_rejections),
+        zs_calculated: fmtInt(zs_mx_rejections),
+        highlight: false,
+        bold: false
+      }
     ];
   }
 }
