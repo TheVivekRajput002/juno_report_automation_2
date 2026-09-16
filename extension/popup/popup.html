@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Restaurant Report Automation</title>
+  <link rel="stylesheet" href="popup.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="logo-icon">📊</div>
+        <div>
+          <h1>Report Automation</h1>
+          <p class="subtitle">Zomato to Google Sheets</p>
+        </div>
+      </div>
+      <div id="statusBadge" class="status-badge ready">
+        <span class="status-dot"></span>
+        <span id="statusText">Ready</span>
+      </div>
+    </header>
+
+    <!-- Main Content Form -->
+    <main class="content">
+      <!-- Outlet Selector Card -->
+      <div class="card">
+        <label class="card-label" for="outletSelect">
+          <span class="label-icon">🏪</span> Target Restaurant Outlet
+        </label>
+        <select id="outletSelect" class="form-select">
+          <!-- Populated by JS -->
+        </select>
+
+        <div id="customOutletFields" class="custom-fields hidden">
+          <div class="input-group">
+            <input type="text" id="customName" placeholder="Outlet / Brand Name" class="form-input">
+          </div>
+          <div class="input-group">
+            <input type="text" id="customZomatoId" placeholder="Zomato Restaurant ID (e.g. 22317789)" class="form-input">
+          </div>
+        </div>
+      </div>
+
+      <!-- Date Range Selector Card -->
+      <div class="card">
+        <div class="card-header-row">
+          <label class="card-label">
+            <span class="label-icon">📅</span> Date Range Granularity
+          </label>
+          <div class="toggle-group">
+            <button type="button" id="tabPreset" class="toggle-btn active">Weeks</button>
+            <button type="button" id="tabCustom" class="toggle-btn">Custom</button>
+          </div>
+        </div>
+
+        <!-- Presets View -->
+        <div id="presetView" class="view-panel">
+          <div class="pill-grid">
+            <button type="button" class="pill-btn active" data-weeks="1">1 Week</button>
+            <button type="button" class="pill-btn" data-weeks="2">2 Weeks</button>
+            <button type="button" class="pill-btn" data-weeks="3">3 Weeks</button>
+            <button type="button" class="pill-btn" data-weeks="4">4 Weeks</button>
+          </div>
+          <div id="previewRanges" class="preview-box">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <!-- Custom Date View -->
+        <div id="customView" class="view-panel hidden">
+          <div class="date-row">
+            <div class="date-input-wrap">
+              <label for="startDate">Start Date</label>
+              <input type="date" id="startDate" class="form-input date-picker">
+            </div>
+            <div class="date-input-wrap">
+              <label for="endDate">End Date</label>
+              <input type="date" id="endDate" class="form-input date-picker">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Destination Sheet Card -->
+      <div class="card">
+        <label class="card-label" for="worksheetInput">
+          <span class="label-icon">📑</span> Google Sheet Tab Name
+        </label>
+        <input type="text" id="worksheetInput" value="Automated Reports" class="form-input" placeholder="e.g. Automated Reports">
+      </div>
+
+      <!-- Progress Section (Visible when running/completed) -->
+      <div id="progressSection" class="progress-section hidden">
+        <div class="progress-header">
+          <span id="progressLabel">Executing Automation...</span>
+          <span id="progressCounter">0 / 0</span>
+        </div>
+        <div class="progress-bar-container">
+          <div id="progressBar" class="progress-bar-fill"></div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="action-row">
+        <button type="button" id="runBtn" class="btn primary-btn">
+          <span class="btn-text">🚀 Run Report Automation</span>
+          <span class="spinner hidden"></span>
+        </button>
+        <a id="sheetLinkBtn" href="#" target="_blank" class="btn link-btn hidden">
+          <span>🔗 Open Live Google Sheet</span>
+        </a>
+      </div>
+
+      <!-- Live Terminal Console Logs -->
+      <div class="console-card">
+        <div class="console-header">
+          <span>TERMINAL EXECUTION LOGS</span>
+          <button type="button" id="clearLogBtn" class="console-action-btn">Clear</button>
+        </div>
+        <div id="consoleBody" class="console-body">
+          <div class="log-line info">[Ready] Select an outlet and click 'Run Report Automation'.</div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

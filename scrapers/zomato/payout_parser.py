@@ -29,21 +29,43 @@ class PayoutParser:
             data["payout_delivered_orders"] = clean_number(m_orders.group(1))
 
         # 2. Net order value (A) / Sales after discount
-        m_nov = re.search(r"Net order value\s*(?:\(A\))?\s*[:\n\r]*\s*₹?\s*([\d,]+(?:\.\d+)?)", combined_text, re.I)
+        m_nov = re.search(r"Net order value\s*(?:\(A\))?[^\d\n\r]{0,30}₹?\s*([\d,]+(?:\.\d+)?)", combined_text, re.I)
         if m_nov:
             data["net_order_value_amount"] = clean_number(m_nov.group(1))
+            data["sales_after_discount"] = clean_number(m_nov.group(1))
+
+        lines = [l.strip() for l in combined_text.splitlines() if l.strip()]
+
+        def get_item_value(keywords: List[str], max_lookahead: int = 3) -> float:
+            for idx, l in enumerate(lines):
+                l_low = l.lower().strip()
+                if all(kw.lower() in l_low for kw in keywords):
+                    # Check next lines for ₹ amount
+                    for j in range(idx + 1, min(idx + 1 + max_lookahead, len(lines))):
+                        next_l = lines[j]
+                        if any(k in next_l.lower() for k in ["additions", "order level", "tax deductions", "investments in growth"]):
+                            break
+                        m_next = re.search(r'[-–—]?\s*₹?\s*([\d,]+(?:\.\d+)?)', next_l)
+                        if m_next:
+                            val = abs(clean_number(m_next.group(1)))
+                            if val > 0:
+                                return val
+                            break
+            return 0.0
 
         # 3. Item subtotal (under Net Order Value)
-        m_subtotal = re.search(r"(?:Item Subtotal|Item Total|Gross Sales)\s*[:\n\r]*\s*₹?\s*([\d,]+(?:\.\d+)?)", combined_text, re.I)
-        if m_subtotal:
-            data["subtotal"] = clean_number(m_subtotal.group(1))
+        m_subtotal = re.search(r"(?:Item\s*Subtotal|Item\s*Total|Gross\s*Sales)[^\d\n\r]{0,30}₹?\s*([\d,]+(?:\.\d+)?)", combined_text, re.I)
+        subtotal_val = clean_number(m_subtotal.group(1)) if m_subtotal else 0.0
+        if subtotal_val == 0.0:
+            subtotal_val = get_item_value(["item subtotal"]) or get_item_value(["item total"])
+        if subtotal_val > 0.0:
+            data["subtotal"] = subtotal_val
+            data["item_subtotal"] = subtotal_val
 
-        # 4. Total Discounts (hardcoded formula as specified):
+        # 4. Total Discounts (formula as specified):
         #    Total Discount = Restaurant discount (Promos)
         #                   + Restaurant discount (Flat offs, Freebies, Gold, relisted orders and others)
         #                   + Delivery charge discount (0 if not exists)
-        lines = [l.strip() for l in combined_text.splitlines() if l.strip()]
-
         def get_item_discount(keywords: List[str]) -> float:
             for idx, l in enumerate(lines):
                 l_low = l.lower().strip()
@@ -54,8 +76,8 @@ class PayoutParser:
                         val = abs(clean_number(m_neg[-1]))
                         if val > 0:
                             return val
-                    # Check next 1-2 lines for ₹ amount
-                    for j in range(idx + 1, min(idx + 3, len(lines))):
+                    # Check next 1-3 lines for ₹ amount
+                    for j in range(idx + 1, min(idx + 4, len(lines))):
                         next_l = lines[j]
                         if any(k in next_l.lower() for k in ["gst", "subtotal", "net order", "additions", "packaging", "order level", "delivery charge", "restaurant discount"]):
                             break
@@ -72,7 +94,7 @@ class PayoutParser:
         if disc_promos == 0.0:
             disc_promos = get_item_discount(["promos"])
         if disc_promos == 0.0:
-            m_p = re.search(r"(?:Restaurant discount\s*\(Promos\)|Promos(?:\s*discount)?)\s*[:\n\r]*\s*[-–—]?\s*₹?\s*([\d,]+(?:\.\d+)?)", combined_text, re.I)
+            m_p = re.search(r"(?:Restaurant discount\s*\(Promos\)|Promos(?:\s*discount)?)[^\d\n\r]{0,30}[-–—]?\s*₹?\s*([\d,]+(?:\.\d+)?)", combined_text, re.I)
             if m_p:
                 disc_promos = abs(clean_number(m_p.group(1)))
 
@@ -85,14 +107,14 @@ class PayoutParser:
         if disc_flat_offs == 0.0:
             disc_flat_offs = get_item_discount(["relisted"])
         if disc_flat_offs == 0.0:
-            m_f = re.search(r"(?:Restaurant discount\s*\([^)]*(?:flat off|freebie|gold|relisted)[^)]*\)|Flat offs[^\n\r]*?discount)\s*[:\n\r]*\s*[-–—]?\s*₹?\s*([\d,]+(?:\.\d+)?)", combined_text, re.I)
+            m_f = re.search(r"(?:Restaurant discount\s*\([^)]*(?:flat off|freebie|gold|relisted)[^)]*\)|Flat offs[^\n\r]*?discount)[^\d\n\r]{0,30}[-–—]?\s*₹?\s*([\d,]+(?:\.\d+)?)", combined_text, re.I)
             if m_f:
                 disc_flat_offs = abs(clean_number(m_f.group(1)))
 
         # Item 3: Delivery charge discount (0 if not exists)
         disc_delivery = get_item_discount(["delivery", "discount"])
         if disc_delivery == 0.0:
-            m_d = re.search(r"(?:Delivery charge discount|Delivery fee discount|Delivery discount)\s*[:\n\r]*\s*[-–—]?\s*₹?\s*([\d,]+(?:\.\d+)?)", combined_text, re.I)
+            m_d = re.search(r"(?:Delivery charge discount|Delivery fee discount|Delivery discount)[^\d\n\r]{0,30}[-–—]?\s*₹?\s*([\d,]+(?:\.\d+)?)", combined_text, re.I)
             if m_d:
                 disc_delivery = abs(clean_number(m_d.group(1)))
 
@@ -101,6 +123,20 @@ class PayoutParser:
         data["discount_flat_offs"] = disc_flat_offs
         data["discount_delivery"] = disc_delivery
         data["total_discount"] = total_discount
+
+        # Reconciliation: Subtotal vs Net Order Value vs Discount
+        nov = data.get("net_order_value_amount", 0.0)
+        sub = data.get("subtotal", 0.0)
+        if sub > 0 and nov > 0 and sub > nov and total_discount == 0.0:
+            total_discount = round(sub - nov, 2)
+            data["total_discount"] = total_discount
+        elif nov > 0 and total_discount > 0 and sub == 0.0:
+            sub = round(nov + total_discount, 2)
+            data["subtotal"] = sub
+            data["item_subtotal"] = sub
+        elif sub > 0 and total_discount > 0 and nov == 0.0:
+            data["net_order_value_amount"] = round(sub - total_discount, 2)
+            data["sales_after_discount"] = data["net_order_value_amount"]
 
         # 5. Packaging Charges
         m_pack = re.search(r"(?:Packaging Charges?|Packaging Fee)\s*[:\n\r]*\s*₹?\s*([\d,]+(?:\.\d+)?)", combined_text, re.I)

@@ -235,16 +235,211 @@ body {
   text-transform: uppercase;
 }
 
-/* Select Outlet Row */
-.outlet-selector-row {
+/* Section Header Row with Count & Quick Actions */
+.section-header-row {
   display: flex;
-  gap: 10px;
+  justify-content: space-between;
   align-items: center;
+  margin-bottom: 2px;
+}
+
+.section-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.badge-count {
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  color: #60a5fa;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+  letter-spacing: 0.2px;
+}
+
+.header-action-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-action-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: 1px solid var(--border-control);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-action-ghost:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-main);
+  border-color: var(--border-subtle);
+}
+
+.btn-action-ghost.accent {
+  color: #60a5fa;
+  border-color: rgba(59, 130, 246, 0.3);
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.btn-action-ghost.accent:hover {
+  background: rgba(59, 130, 246, 0.18);
+  color: #93c5fd;
+  border-color: #3b82f6;
+}
+
+/* ---------------- Outlets Cards Container ---------------- */
+.outlets-cards-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.outlet-card {
+  background: var(--bg-inset);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  position: relative;
+  transition: all 0.2s ease;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.outlet-card:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.outlet-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 10px;
+}
+
+.outlet-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.card-index-pill {
+  background: rgba(168, 85, 247, 0.15);
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  color: var(--purple-text);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+
+.card-outlet-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.outlet-card-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.card-mode-toggle {
+  display: inline-flex;
+  background: var(--bg-input);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  gap: 2px;
+}
+
+.mode-toggle-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mode-toggle-btn:hover {
+  color: var(--text-main);
+}
+
+.mode-toggle-btn.active {
+  background: var(--bg-card);
+  color: var(--text-main);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.btn-card-action {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-dim);
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-card-action:hover:not(:disabled) {
+  background: var(--bg-card-hover);
+  color: var(--text-main);
+  border-color: var(--border-subtle);
+}
+
+.btn-card-action.danger:hover:not(:disabled) {
+  background: rgba(244, 63, 94, 0.15);
+  border-color: rgba(244, 63, 94, 0.3);
+  color: #fda4af;
+}
+
+.btn-card-action:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+/* Card Body Section: Outlet */
+.saved-mode-view {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .custom-select-wrapper {
   position: relative;
-  flex: 1;
+  width: 100%;
 }
 
 .form-select {
@@ -253,9 +448,9 @@ body {
   background: var(--bg-input);
   border: 1px solid var(--border-control);
   color: var(--text-main);
-  padding: 12px 38px 12px 14px;
+  padding: 10px 38px 10px 12px;
   border-radius: var(--radius-md);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -269,49 +464,61 @@ body {
 
 .select-arrow {
   position: absolute;
-  right: 14px;
+  right: 12px;
   top: 50%;
   transform: translateY(-50%);
   pointer-events: none;
   color: var(--text-muted);
 }
 
-.btn-outline-custom {
+.outlet-id-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.id-tag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-control);
-  color: var(--text-muted);
-  font-size: 13px;
-  font-weight: 600;
-  padding: 12px 16px;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  white-space: nowrap;
+  gap: 4px;
 }
 
-.btn-outline-custom:hover {
-  background: var(--bg-card-hover);
-  color: var(--text-main);
-  border-color: var(--border-subtle);
+.id-tag.zomato {
+  background: rgba(239, 68, 68, 0.12);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.25);
 }
 
-/* Custom Outlet Drawer */
-.custom-outlet-drawer {
-  background: var(--bg-inset);
-  border: 1px solid var(--border-control);
-  border-radius: var(--radius-md);
-  padding: 14px;
-  margin-top: 4px;
+.id-tag.swiggy {
+  background: rgba(245, 158, 11, 0.12);
+  color: #fcd34d;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.id-tag.dim {
+  opacity: 0.5;
+  color: var(--text-dim);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.id-tag .tag-lbl {
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+}
+
+/* Card Body Section: Custom Inputs */
+.custom-mode-view {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-}
-
-.custom-outlet-drawer.hidden {
-  display: none;
+  gap: 10px;
 }
 
 .custom-inputs-grid {
@@ -320,7 +527,7 @@ body {
   gap: 10px;
 }
 
-@media (max-width: 500px) {
+@media (max-width: 540px) {
   .custom-inputs-grid {
     grid-template-columns: 1fr;
   }
@@ -346,37 +553,173 @@ body {
   border-radius: var(--radius-sm);
   font-size: 13px;
   outline: none;
+  transition: border-color 0.15s ease;
 }
 
 .input-field input:focus {
   border-color: var(--border-focus);
 }
 
-.custom-drawer-actions {
+.custom-card-foot {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
 }
 
-.btn-save-sm {
-  background: var(--blue-primary);
-  color: white;
-  border: none;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 6px 14px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-
-.btn-cancel-sm {
+.btn-save-as-stored {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   background: transparent;
-  color: var(--text-muted);
   border: 1px solid var(--border-control);
-  font-size: 12px;
-  padding: 6px 12px;
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 4px 10px;
   border-radius: var(--radius-sm);
   cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-save-as-stored:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-main);
+  border-color: var(--border-subtle);
+}
+
+/* Card Body Section: Date Range & Platform Grid */
+.card-controls-grid {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  margin-top: 2px;
+}
+
+@media (max-width: 520px) {
+  .card-controls-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.card-control-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.card-control-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.card-segmented-control {
+  display: flex;
+  background: var(--bg-input);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  gap: 2px;
+}
+
+.card-segment-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 3px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.card-segment-btn:hover {
+  color: var(--text-main);
+}
+
+.card-segment-btn.active {
+  background: var(--bg-card);
+  color: var(--text-main);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Inline Card Custom Date Row */
+.card-custom-date-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  background: var(--bg-input);
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-control);
+}
+
+.card-custom-date-row.hidden {
+  display: none;
+}
+
+.card-date-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.card-date-wrap label {
+  font-size: 9px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.card-date-wrap input {
+  background: var(--bg-card);
+  border: 1px solid var(--border-control);
+  color: var(--text-main);
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: var(--font-sans);
+  outline: none;
+  width: 100%;
+}
+
+/* ---------------- Add Another Card Button ---------------- */
+.btn-add-card {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(37, 99, 235, 0.06);
+  border: 1px dashed rgba(59, 130, 246, 0.35);
+  color: #60a5fa;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-top: 4px;
+}
+
+.btn-add-card:hover {
+  background: rgba(37, 99, 235, 0.14);
+  border-color: #3b82f6;
+  color: #93c5fd;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* Controls Grid (Date Range + Platform) */

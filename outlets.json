@@ -49,6 +49,13 @@
     "swiggy_account": "account_2"
   },
   {
+    "id": "pintu_saoji_restaurant_3300606",
+    "name": "Pintu Saoji Restaurant",
+    "zomato_id": "3300606",
+    "swiggy_id": "296437",
+    "swiggy_account": "account_2"
+  },
+  {
     "id": "babbu_hotel_18975741",
     "name": "Babbu Hotel",
     "zomato_id": "18975741",
@@ -67,6 +74,97 @@
     "name": "Abdullah Hotel",
     "zomato_id": "21735067",
     "swiggy_id": "1050774",
+    "swiggy_account": ""
+  },
+  {
+    "id": "mullaji_sadar_biryani_center",
+    "name": "Mullaji Sadar Biryani Center",
+    "zomato_id": "19821731",
+    "swiggy_id": "459753",
+    "swiggy_account": ""
+  },
+  {
+    "id": "prime_cake_and_pastry",
+    "name": "Prime Cake And Pastry",
+    "zomato_id": "19055264",
+    "swiggy_id": "",
+    "swiggy_account": ""
+  },
+  {
+    "id": "mr_sandwich_nandanvan",
+    "name": "Mr. Sandwich Nandanvan, Nagpur",
+    "zomato_id": "19684351",
+    "swiggy_id": "",
+    "swiggy_account": ""
+  },
+  {
+    "id": "nana_nia_chaoni",
+    "name": "Nana Nia Chaoni, Nagpur",
+    "zomato_id": "21920232",
+    "swiggy_id": "",
+    "swiggy_account": ""
+  },
+  {
+    "id": "the_carnival_family_restaurant",
+    "name": "The Carnival Family Restaurant",
+    "zomato_id": "20683487",
+    "swiggy_id": "710896",
+    "swiggy_account": ""
+  },
+  {
+    "id": "yaaran_da_adda_tatibandh",
+    "name": "Yaaran Da Adda, Tatibandh, Raipur",
+    "zomato_id": "18689311",
+    "swiggy_id": "261628",
+    "swiggy_account": ""
+  },
+  {
+    "id": "yaaran_da_adda_civil_lines",
+    "name": "Yaaran Da Adda, Civil Lines, Raipur",
+    "zomato_id": "19503132",
+    "swiggy_id": "1412131",
+    "swiggy_account": ""
+  },
+  {
+    "id": "yaaran_da_adda_junior_civil_lines",
+    "name": "Yaaran Da Adda Junior, Civil Lines, Raipur",
+    "zomato_id": "19604463",
+    "swiggy_id": "382813",
+    "swiggy_account": ""
+  },
+  {
+    "id": "koi_shankar_nagar",
+    "name": "Koi, Shankar Nagar, Raipur",
+    "zomato_id": "22217406",
+    "swiggy_id": "1234486",
+    "swiggy_account": ""
+  },
+  {
+    "id": "kasra_biryani_e_hind",
+    "name": "Kasra Biryani-E-Hind",
+    "zomato_id": "22184366",
+    "swiggy_id": "1234511",
+    "swiggy_account": ""
+  },
+  {
+    "id": "tadka_by_barbetos",
+    "name": "Tadka By Barbetos Jawahar Nagar, Raipur",
+    "zomato_id": "22759629",
+    "swiggy_id": "",
+    "swiggy_account": ""
+  },
+  {
+    "id": "biryani_bros_purena",
+    "name": "Biryani Bro's Purena, Raipur",
+    "zomato_id": "22814391",
+    "swiggy_id": "",
+    "swiggy_account": ""
+  },
+  {
+    "id": "damn_burger_mowa",
+    "name": "Damn Burger Mowa, Raipur",
+    "zomato_id": "21185973",
+    "swiggy_id": "1234396",
     "swiggy_account": ""
   }
 ]

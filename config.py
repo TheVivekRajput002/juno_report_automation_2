@@ -16,13 +16,22 @@ ZOMATO_DASHBOARD_URL = "https://www.zomato.com/partners/onlineordering/reporting
 ZOMATO_FINANCE_URL = "https://www.zomato.com/partners/onlineordering/finance/payouts"
 ZOMATO_REPORTS_URL = "https://www.zomato.com/partners/onlineordering/reporting"
 
-# Swiggy Partner Portal URLs (for future expansion)
+# Swiggy Partner Portal URLs
 SWIGGY_BASE_URL = "https://partner.swiggy.com"
 SWIGGY_LOGIN_URL = "https://partner.swiggy.com/login"
+SWIGGY_DASHBOARD_URL = "https://partner.swiggy.com/business-metrics"
+SWIGGY_REPORTS_URL = "https://partner.swiggy.com/business-metrics"
+SWIGGY_FINANCE_URL = "https://partner.swiggy.com/finance"
+
+# Swiggy API discovery & session (isolated from Zomato — no shared paths)
+SWIGGY_API_DISCOVERY_DIR = BASE_DIR / ".user_data" / "swiggy_api_discovery"
+SWIGGY_SESSION_FILE = BASE_DIR / ".user_data" / "swiggy_session.json"
+SWIGGY_API_DISCOVERY_DIR.mkdir(parents=True, exist_ok=True)
 
 # Default restaurant info (if not extracted dynamically)
 DEFAULT_RESTAURANT_NAME = "Biryani Lovers"
 DEFAULT_RESTAURANT_ID = "22317789"
+DEFAULT_SWIGGY_ID = "1263351"
 
 # Google Sheets Integration
 GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/1KLnQnbQhOwb11W-kmT_UxHJPaCjQuUQinp-lYZs_zRE/edit?usp=sharing"

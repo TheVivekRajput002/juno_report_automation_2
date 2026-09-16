@@ -95,39 +95,36 @@ class PayoutScraper(BaseZomatoScraper):
         """Expands collapsible chevrons inside the Payout details drawer (e.g., Net order value, Tax deductions)."""
         if not self.page:
             return
-        print("[*] Expanding accordions in Payout side drawer (Net order value & Tax deductions)...")
+        print("[*] Expanding accordions in Payout side drawer (Net order value, Tax deductions, Deductions)...")
         try:
-            accordions = [
-                "//div[contains(., 'Net order value')]/following-sibling::*[1]",
-                "//*[contains(text(), 'Net order value')]/..",
-                "//div[contains(., 'Tax deductions')]/following-sibling::*[1]",
-                "//*[contains(text(), 'Tax deductions')]/..",
-                "//button[contains(@aria-expanded, 'false')]",
-                "//*[contains(@class, 'accordion')]//*[contains(@class, 'chevron')]",
-                "//*[contains(text(), 'Total orders')]/..",
-            ]
-            for sel in accordions:
-                try:
-                    elems = self.page.locator(sel)
-                    for i in range(min(elems.count(), 2)):
-                        elems.nth(i).click(timeout=800)
-                        self.page.wait_for_timeout(200)
-                except Exception:
-                    pass
             for f in self.page.frames:
                 try:
                     f.evaluate("""() => {
-                        const drawer = document.querySelector('[class*="drawer"], [class*="modal"], [class*="sheet"], [class*="sidebar"], [class*="details"]') || document.body;
-                        const clickables = Array.from(drawer.querySelectorAll('svg, button, [role="button"], [class*="chevron"], [class*="arrow"], [class*="accordion"], [aria-expanded="false"], i'));
-                        for (const el of clickables) {
+                        const drawer = document.querySelector('[class*="drawer"], [class*="modal"], [class*="sheet"], [class*="sidebar"], [role="dialog"], [class*="details"]') || document.body;
+                        
+                        // Click closed aria-expanded toggles
+                        const ariaClosed = Array.from(drawer.querySelectorAll('[aria-expanded="false"]'));
+                        for (const el of ariaClosed) {
                             try { el.click(); } catch(e) {}
+                        }
+
+                        // Target specific section containers / headers if item subtotal is not yet visible
+                        const text = drawer.innerText || '';
+                        if (!text.toLowerCase().includes('item subtotal')) {
+                            const sectionElements = Array.from(drawer.querySelectorAll('div, button, span, p')).filter(el => {
+                                const t = (el.innerText || '').trim();
+                                return (t.startsWith('Net order value') || t.startsWith('Tax deductions') || t.startsWith('Order level') || t.startsWith('Additions')) && el.children.length < 4;
+                            });
+                            for (const el of sectionElements) {
+                                try { el.click(); } catch(e) {}
+                            }
                         }
                     }""")
                 except Exception:
                     pass
+            self.page.wait_for_timeout(1000)
         except Exception:
             pass
-        self.page.wait_for_timeout(1000)
 
     def extract_data(
         self,

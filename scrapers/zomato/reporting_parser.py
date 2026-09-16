@@ -108,10 +108,10 @@ class ReportingParser:
             else:
                 cell_val = ""
 
-            # 1. Sales
+            # 1. Sales (Net Sales / Sales after discount in reporting table)
             if metric_name == "sales" or metric_name == "total sales":
                 extracted["sales"] = clean_number(cell_val)
-                extracted["subtotal"] = clean_number(cell_val)
+                extracted["reporting_sales"] = clean_number(cell_val)
                 extracted["sales_after_discount"] = clean_number(cell_val)
 
             # 2. Delivered / Total Orders in reporting table
@@ -292,7 +292,8 @@ class ReportingParser:
                 val = extract_clean_sequence(i, is_pct_conversion=False)
                 if val is not None and val > 0:
                     metrics["sales"] = val
-                    metrics["subtotal"] = val
+                    metrics["reporting_sales"] = val
+                    metrics["sales_after_discount"] = val
 
             elif ("average order value" in l_lower or l_lower == "aov") and "net_order_value" not in metrics:
                 val = extract_clean_sequence(i, is_pct_conversion=False)

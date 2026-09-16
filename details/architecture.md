@@ -1,16 +1,20 @@
-# Zomato Scraper Architecture & Modular Design
+# Multi-Platform Scraper Architecture & Modular Design (Zomato & Swiggy)
 
 ## 1. Overview & Architectural Goals
 
-The Zomato Scraper is responsible for automating end-to-end data extraction from the Zomato Partner Portal across multiple tabs:
-1. **Reporting Portal (`/business-reports`)**: Funnel metrics (Impressions, I2M, M2O, C2O), Operational metrics (Online %, KPT, MX Rejections, Delivered Orders, Sales).
-2. **Finance Portal (`/payouts`)**: Financial breakdown from weekly settlement drawers (Item Subtotal, Discounts, Order Level Deductions, GST @18%, Commission, Ads, Net Payout / Cash in Bank).
+The report automation system extracts performance, operational, and financial settlement data across both **Zomato** and **Swiggy** restaurant partner portals:
+1. **Zomato Partner Portal (`zomato.com/partners/onlineordering`)**:
+   - **Reporting Portal (`/reporting`)**: Matrix table funnel & operations metrics.
+   - **Finance Portal (`/finance/payouts`)**: Past weekly cycle drawers with itemized deductions.
+2. **Swiggy Partner Portal (`partner.swiggy.com`)**:
+   - **Business Reports Portal (`/business-metrics` or `/reports`)**: Outlet-level funnel metrics (Impressions, Menu Opens, I2M, M2O, C2O), Operational metrics (Online availability %, KPT), and Restaurant Cancelled Orders.
+   - **Finance Portal (`/finance` or `/payouts`)**: Weekly payout cards and side-drawer breakdowns (Total Orders, Customer Paid (A), Total Fees (B), Taxes/TDS (D), Ads (E), and Net Payout).
 
 ### Core Architectural Goals:
-- **Decoupling (Single Responsibility)**: Separation of concerns across Navigation, DOM interaction, Outlet selection, and Text/Data Parsing.
-- **Isolated Failure Boundaries**: If Zomato alters their Payout drawer UI, it will not disrupt or crash Business Reports extraction, and vice-versa.
-- **Independent Debuggability**: Parsers are pure Python logic decoupled from Playwright browser instances, allowing instant unit testing with mock HTML/text payloads.
-- **Clean Extensibility**: New metrics or tab scrapers can be added without modifying unrelated modules.
+- **Strict Decoupling & Isolation**: Zomato and Swiggy scrapers live in separate namespaces (`scrapers/zomato/` and `scrapers/swiggy/`). Changes to one platform never disrupt or break the other.
+- **Single Responsibility Modules**: Separation of Navigation, Outlet Selection, DOM/Drawer interactions, and Pure Python Data Parsing.
+- **Independent Unit Testing**: All parsers (`ReportingParser`, `PayoutParser`, `SwiggyPerformanceParser`, `SwiggyPayoutParser`) are pure Python classes without browser dependencies.
+- **Direct Evaluated Values**: In compliance with `AGENTS.md`, numeric values are evaluated directly, and percentages are formatted as `"XX.XX%"` strings without openpyxl uncalculated formula dependencies.
 
 ---
 
@@ -19,30 +23,40 @@ The Zomato Scraper is responsible for automating end-to-end data extraction from
 ```mermaid
 flowchart TD
     subgraph Orchestration Layer
-        CLI[main.py CLI / Runner] --> Coordinator[ZomatoScraper / Coordinator]
+        CLI[main.py CLI / Web UI] --> Runner[Automation Runner]
+        Runner --> ZomatoCoord[ZomatoScraper (Coordinator)]
+        Runner --> SwiggyCoord[SwiggyScraper (Coordinator)]
     end
 
     subgraph Browser & Session Management
-        Coordinator --> BM[BrowserManager]
-        Coordinator --> Auth[ZomatoAuth]
-        Coordinator --> Outlet[OutletSelector]
+        BM[BrowserManager (.user_data/chrome_profile)]
+        ZomatoCoord --> BM
+        SwiggyCoord --> BM
     end
 
-    subgraph Extraction Layer
-        Coordinator --> RepScraper[ReportingScraper]
-        Coordinator --> PayScraper[PayoutScraper]
-        Coordinator --> Base[BaseZomatoScraper]
+    subgraph Zomato Pipeline
+        ZomatoCoord --> ZAuth[ZomatoAuth]
+        ZomatoCoord --> ZOutlet[OutletSelector]
+        ZomatoCoord --> ZRepScraper[ReportingScraper]
+        ZomatoCoord --> ZPayScraper[PayoutScraper]
+        ZRepScraper --> ZRepParser[ReportingParser]
+        ZPayScraper --> ZPayParser[PayoutParser]
     end
 
-    subgraph Pure Parsing Layer
-        RepScraper --> RepParser[ReportingParser]
-        PayScraper --> PayParser[PayoutParser]
+    subgraph Swiggy Pipeline
+        SwiggyCoord --> SAuth[SwiggyAuth]
+        SwiggyCoord --> SOutlet[SwiggyOutletSelector]
+        SwiggyCoord --> SPerfScraper[SwiggyPerformanceScraper]
+        SwiggyCoord --> SPayScraper[SwiggyPayoutScraper]
+        SPerfScraper --> SPerfParser[SwiggyPerformanceParser]
+        SPayScraper --> SPayParser[SwiggyPayoutParser]
     end
 
-    subgraph Downstream Processing
-        Coordinator --> Aggregator[Aggregated Raw Dict]
-        Aggregator --> Calc[MetricCalculator]
-        Calc --> Excel[ExcelReportGenerator]
+    subgraph Downstream Processing & Exporters
+        ZomatoCoord --> Calc[MetricCalculator]
+        SwiggyCoord --> Calc
+        Calc --> ExcelGen[ExcelReportGenerator (Z, S, Z+S)]
+        Calc --> SheetGen[GoogleSheetsReportGenerator (Z, S, Z+S)]
     end
 ```
 
@@ -50,202 +64,196 @@ flowchart TD
 
 ## 3. Directory & Module Structure
 
-The scraper is partitioned under `scrapers/zomato/` as follows:
-
 ```
 scrapers/
-├── browser_manager.py              # Playwright browser lifecycle & persistent sessions
-├── zomato_scraper.py               # Facade & backward compatibility export
-└── zomato/
-    ├── __init__.py                 # Package exports (ZomatoScraper, parsers, sub-scrapers)
-    ├── base.py                     # Base class with safe DOM locators & frame traversal
-    ├── auth.py                     # Login status checker & session verification
-    ├── outlet_selector.py          # Outlet selection modal & dialog handler
-    ├── reporting_parser.py         # Pure parser for Reporting matrix table & fallback text
-    ├── reporting_scraper.py        # Business Reports tab scraper & table navigator
-    ├── payout_parser.py            # Pure parser for Payout side-drawer text & discount formulas
-    ├── payout_scraper.py           # Finance -> Payouts scraper & cycle row navigator
-    └── coordinator.py              # ZomatoScraper orchestrator (facade coordinating all steps)
+├── browser_manager.py                  # Playwright browser lifecycle & persistent sessions
+├── zomato_scraper.py                   # Facade & backward compatibility export
+├── swiggy_scraper.py                   # Facade & backward compatibility export for Swiggy
+├── zomato/
+│   ├── __init__.py                     # Package exports (ZomatoScraper, parsers, sub-scrapers)
+│   ├── base.py                         # Base class with safe DOM locators & frame traversal
+│   ├── auth.py                         # Zomato login status checker & session verification
+│   ├── outlet_selector.py              # Zomato outlet selection modal & dialog handler
+│   ├── reporting_parser.py             # Pure parser for Reporting matrix table & fallback text
+│   ├── reporting_scraper.py            # Business Reports tab scraper & table navigator
+│   ├── payout_parser.py                # Pure parser for Payout side-drawer text & discount formulas
+│   ├── payout_scraper.py               # Finance -> Payouts scraper & cycle row navigator
+│   └── coordinator.py                  # ZomatoScraper orchestrator
+└── swiggy/
+    ├── __init__.py                     # Package exports (SwiggyScraper, parsers, sub-scrapers)
+    ├── base.py                         # Base class with safe DOM locators & frame traversal
+    ├── auth.py                         # Swiggy login status checker & session verification
+    ├── outlet_selector.py              # Swiggy outlet dropdown/modal selector by Swiggy ID
+    ├── performance_parser.py           # Pure parser for Swiggy Business Reports / Funnel metrics
+    ├── performance_scraper.py          # Business Reports tab scraper (Filter modal, dates, metrics)
+    ├── payout_parser.py                # Pure parser for Swiggy Finance & Settlement drawer
+    ├── payout_scraper.py               # Finance tab scraper (Irregular cycle date matching, drawer)
+    └── coordinator.py                  # SwiggyScraper orchestrator
 ```
 
 ---
 
-## 4. Module Details & Responsibilities
+## 4. Swiggy Scraper Extraction & Calculation Rules
 
-### 4.1 `base.py` (`BaseZomatoScraper`)
-- **Responsibility**: Common utility operations across all scrapers.
-- **Key Methods**:
-  - `find_clickable(candidates, timeout_ms)`: Safely tests multiple selector variations across both the main page and all embedded iframe frames.
-  - `close_all_drawers_and_modals()`: Closes popups, overlays, and side drawers using `Escape` and close icon selectors.
-  - `setup_network_interception()`: Intercepts internal XHR/JSON responses.
-  - `parse_outlet_label(text)`: Static utility parsing restaurant names and numeric IDs from strings (e.g., `"The Spice Meridian (ID: 22663260)"`).
+### 1. Date Matching Rule
+- **Payout Cycles**: Swiggy payout cycles can be irregular (e.g., `23rd Aug-31st Aug`, `16th Aug-22nd Aug`). The system dynamically evaluates and selects the payout card with the maximum overlap / closest matching date range to the target week.
 
-### 4.2 `auth.py` (`ZomatoAuth`)
-- **Responsibility**: Authentication and session validation.
-- **Key Methods**:
-  - `check_login_status()`: Navigates to the dashboard, inspects URL redirects and key UI indicators to verify if the saved session is valid or needs interactive Google login.
+### 2. Finance Page Extraction (Payout Details)
+**Before extracting**: Select target outlet from the top-left dropdown, navigate to Past Payouts / Current Payout, select target week card, and click `See details ->`.
 
-### 4.3 `outlet_selector.py` (`OutletSelector`)
-- **Responsibility**: Restaurant outlet selection across different page dialogs.
-- **Handles**:
-  - **Reporting Tab Filter Modal (`#modal`)**: Selects 'Outlet' on sidebar, clears previous selections, searches target ID/Name, selects checkbox, clicks 'Apply'.
-  - **Payouts Dialog (`role='dialog'`)**: Ensures 'Restaurant' tab is active, searches target ID/Name, selects radio option, clicks 'Apply'.
+**Field Extractions**:
+- **Orders**: `Total Orders` (under past payout card header).
+- **Subtotal**: `Item Total` (under `(A) Total Customer Paid`).
+- **Total Discount**: Sum of `Restaurant Discounts (Coupon based)` + `Restaurant Discounts (Trade Discounts, Freebies and others)` (under `(A) Total Customer Paid`).
+- **Sales after discount**: `Subtotal - Total Discount`
+- **Net order value**: `Sales after discount / Orders` (Numeric, rounded to 2 decimal places).
+- **Packaging Charges**: `Packaging Charges` (under Finance tab, or `0` if absent).
+- **Commission**: `(B) Total Fees` + `TDS` (under `(D) Total Taxes`).
+- **Ads**: `(E) Growth Investments in Ads`.
+- **Cash in Bank**: `Net Payout` (`Net Payout (A+B+C+D+E+F)`).
 
-### 4.4 `reporting_parser.py` (`ReportingParser`)
-- **Responsibility**: **Pure data parsing** for the Business Reports matrix table.
-- **Key Methods**:
-  - `find_target_column_index(headers, start_date, end_date, date_label)`: Identifies the exact column index corresponding to the specified date range.
-  - `extract_metrics_from_rows(rows, target_col_idx, ...)`: Maps DOM table row values to standard internal metric keys.
-  - `parse_reporting_text_matrix(body_text, target_col_idx, headers, ...)`: Fallback parser filtering out relative comparison badges (e.g., `▲ +9%`, `▼ -3%`) to extract pure metric values.
+### 3. Business Reports Tab Extraction (Performance Metrics)
+**Before extracting**: In the Filter modal, select "Filter by outlets" (not Brands), select specific outlet ID, and apply the custom target date range.
 
-### 4.5 `reporting_scraper.py` (`ReportingScraper`)
-- **Responsibility**: Business Reports page navigation and table extraction.
-- **Key Methods**:
-  - `select_weekly_view()`: Switches granularity to Weekly view.
-  - `expand_accordions()`: Expands nested table rows (e.g., 'Menu to order' -> 'Cart to order').
-  - `scroll_to_reveal_columns()`: Horizontally scrolls table containers to render earlier weekly columns.
-  - `extract_data(start_date, end_date, date_label, ...)`: Navigates to `/business-reports`, runs outlet selector, extracts DOM table, and delegates parsing to `ReportingParser`.
+**Field Extractions**:
+- **Visibility**: `Online availability` (under Operations section).
+- **KPT**: `Kitchen Prep Time` (under Operations section).
+- **Impressions**: `Impressions` (under Funnel section).
+- **I2M**: `Menu opens percentage` (under Funnel section).
+- **Menu Opens**: `Menu opens count` (under Funnel section).
+- **C2O**: `Orders placed percentage` (under Funnel section).
+- **M2O**: Calculated as `Cart builds % × Orders placed %` (from Funnel section).
+- **Mx Rejections**: `Restaurant Cancelled Orders` (under Sales section).
 
-### 4.6 `payout_parser.py` (`PayoutParser`)
-- **Responsibility**: **Pure text and financial breakdown parsing** for Payout details side drawer.
-- **Handles**:
-  - Item subtotal, net order value amount, packaging charges.
-  - Hardcoded discount calculation:
-    $$\text{Total Discount} = \text{Promos} + \text{Flat offs/Freebies/Gold} + \text{Delivery Discount}$$
-  - Order level deductions (C), GST on service and payment mechanism fees @18% (D), and Commission:
-    $$\text{Commission} = \text{Order Level Deductions} + \text{GST fee @18\%}$$
-  - Growth investments (Ads), Cash in Bank / Net Payout, Hyperpure spend, and Rejections.
-
-### 4.7 `payout_scraper.py` (`PayoutScraper`)
-- **Responsibility**: Payouts page navigation and drawer lifecycle.
-- **Key Methods**:
-  - `select_payout_cycle_row(start_date, end_date, date_label)`: Locates and clicks the specific cycle row in the Past Cycles table.
-  - `expand_drawer_accordions()`: Expands nested accordions inside the drawer (e.g., Net Order Value, Tax Deductions).
-  - `extract_data(start_date, end_date, date_label, ...)`: Direct navigation to `/payouts`, selects outlet, opens drawer, captures text across frames, and delegates parsing to `PayoutParser`.
-
-### 4.8 `coordinator.py` (`ZomatoScraper`)
-- **Responsibility**: Unified orchestrator and backward-compatible entry point.
-- Coordinates sequential extraction (`ReportingScraper` -> `PayoutScraper` -> `extract_restaurant_info`), merges results, and manages errors gracefully without pipeline crashes.
+### 4. Swiggy Percentage Metric Calculations
+All percentage metrics are formatted as strings with 2 decimal places and the `%` sign:
+- **Discount %**: `(Total Discount / Subtotal) * 100` $\rightarrow$ `"XX.XX%"`
+- **Commission %**: `(Commission / Sales after discount) * 100` $\rightarrow$ `"XX.XX%"`
+- **Ads %**: `(Ads / Subtotal) * 100` $\rightarrow$ `"XX.XX%"`
+- **Payout %**: `(Cash in Bank / Subtotal) * 100` $\rightarrow$ `"XX.XX%"`
+- **Visibility, I2M, C2O, M2O**: Formatted directly as percentage strings (e.g., `"98.90%"`).
 
 ---
 
-## 5. Data Flow & Metric Lifecycle
+## 5. Zomato Scraper Extraction & Calculation Rules
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User as main.py / User
-    participant Coord as ZomatoScraper (Coordinator)
-    participant Rep as ReportingScraper
-    participant RepP as ReportingParser
-    participant Pay as PayoutScraper
-    participant PayP as PayoutParser
-    participant Calc as MetricCalculator
-    participant RepGen as ExcelReportGenerator
+### 5.1 Business Reports Tab Extraction
+- Navigation: `/partners/onlineordering/reporting` $\rightarrow$ Select Outlet $\rightarrow$ Select Weekly granularity.
+- Metrics: `Sales`, `Delivered Orders`, `Average Order Value`, `Online %` (Visibility), `Kitchen Prep Time` (KPT), `Impressions`, `I2M` (Impression to Menu %), `M2O` (Menu to Order %), `C2O` (Cart to Order %), `Rejections`.
 
-    User->>Coord: scrape_all(start_date, end_date, date_label, res_id)
-    Coord->>Rep: extract_data(start_date, end_date, date_label, res_id)
-    Rep->>RepP: extract_metrics_from_rows() / parse_reporting_text_matrix()
-    RepP-->>Rep: reporting_metrics dict
-    Rep-->>Coord: reporting_metrics dict
-
-    Coord->>Pay: extract_data(start_date, end_date, date_label, res_id)
-    Pay->>PayP: parse_payout_text(combined_drawer_text)
-    PayP-->>Pay: payout_metrics dict
-    Pay-->>Coord: payout_metrics dict
-
-    Coord-->>User: aggregated_raw_data dict
-    User->>Calc: calculate_zomato_metrics(aggregated_raw_data)
-    Calc-->>User: computed_financial_metrics dict
-    User->>RepGen: generate_report(computed_financial_metrics, ...)
-    RepGen-->>User: Generated Excel File (.xlsx)
-```
+### 5.2 Finance / Payouts Tab Extraction
+- Navigation: `/partners/onlineordering/finance/payouts` $\rightarrow$ Select Outlet $\rightarrow$ Click Past Cycle Row $\rightarrow$ Expand Drawer.
+- Metrics:
+  - `Subtotal`: Item Subtotal under Net Order Value.
+  - `Total Discount`: Promos + Flat offs/Freebies/Gold + Delivery Discount.
+  - `Sales after discount`: `Subtotal - Total Discount`.
+  - `Net order value`: `Sales after discount / Orders`.
+  - `Commission`: Order level deductions (C) + GST @18% (D).
+  - `Ads`: Investments in growth (E).
+  - `Cash in Bank`: Estimated payout / Net payout.
 
 ---
 
-## 6. How to Debug Each Step Independently
+## 6. Combined (Z+S) Metric Derivation Rules
 
-Because the scraper is decoupled, you can debug any component in complete isolation without running the entire pipeline:
+When both platforms are scraped or when generating the multi-platform report, the **Z+S** combined column is evaluated as follows:
+- $\text{Orders}_{ZS} = \text{Orders}_Z + \text{Orders}_S$
+- $\text{Subtotal}_{ZS} = \text{Subtotal}_Z + \text{Subtotal}_S$
+- $\text{Total Discount}_{ZS} = \text{Total Discount}_Z + \text{Total Discount}_S$
+- $\text{Sales after discount}_{ZS} = \text{Subtotal}_{ZS} - \text{Total Discount}_{ZS}$
+- $\text{Net order value}_{ZS} = \text{Sales after discount}_{ZS} / \text{Orders}_{ZS}$
+- $\text{Packaging Charges}_{ZS} = \text{Packaging}_Z + \text{Packaging}_S$
+- $\text{Commission}_{ZS} = \text{Commission}_Z + \text{Commission}_S$
+- $\text{Ads}_{ZS} = \text{Ads}_Z + \text{Ads}_S$
+- $\text{Cash in Bank}_{ZS} = \text{Cash in Bank}_Z + \text{Cash in Bank}_S$
+- $\text{Discount \%}_{ZS} = (\text{Total Discount}_{ZS} / \text{Subtotal}_{ZS}) \times 100 \rightarrow \text{"XX.XX\%"}$
+- $\text{Commission \%}_{ZS} = (\text{Commission}_{ZS} / \text{Sales after discount}_{ZS}) \times 100 \rightarrow \text{"XX.XX\%"}$
+- $\text{Ads \%}_{ZS} = (\text{Ads}_{ZS} / \text{Subtotal}_{ZS}) \times 100 \rightarrow \text{"XX.XX\%"}$
+- $\text{Payout \%}_{ZS} = (\text{Cash in Bank}_{ZS} / \text{Subtotal}_{ZS}) \times 100 \rightarrow \text{"XX.XX\%"}$
+- $\text{Impressions}_{ZS} = \text{Impressions}_Z + \text{Impressions}_S$
+- $\text{Menu Opens}_{ZS} = \text{Menu Opens}_Z + \text{Menu Opens}_S$
+- $\text{KPT}_{ZS} = \text{Average}(\text{KPT}_Z, \text{KPT}_S)$
+- Funnel Percentages ($\text{Visibility}_{ZS}, \text{I2M}_{ZS}, \text{C2O}_{ZS}, \text{M2O}_{ZS}$): Derived or formatted consistently.
 
-### 1. Debugging Payout Drawer Parsing (No browser needed)
-If Payout drawer discount or deduction regex rules need tuning:
+---
+
+## 7. How to Debug Each Step Independently
+
+### 1. Debugging Swiggy Payout Drawer Parsing (No browser needed)
 ```python
-from scrapers.zomato.payout_parser import PayoutParser
+from scrapers.swiggy.payout_parser import SwiggyPayoutParser
 
 raw_drawer_text = """
-Net order value (A) : ₹ 11,394.00
-Item Subtotal : ₹ 14,465.00
-Restaurant discount (Promos) : - ₹ 2,500.00
-Restaurant discount (Flat offs, Freebies, Gold, relisted orders and others) : - ₹ 571.00
-Order level deductions (C) : ₹ 3,186.44
-GST on service and payment mechanism fees @ 18% : ₹ 573.56
-Investments in growth (E) : ₹ 7,933.00
-Estimated payout : ₹ 0.00
+Total Orders: 74
+(A) Total Customer Paid: ₹ 22,450.00
+Item Total: ₹ 22,450.00
+Restaurant Discounts (Coupon based): - ₹ 3,100.00
+Restaurant Discounts (Trade Discounts, Freebies and others): - ₹ 650.00
+(B) Total Fees: ₹ 4,200.00
+(D) Total Taxes:
+TDS: ₹ 224.50
+(E) Growth Investments in Ads: ₹ 6,500.00
+Net Payout (A+B+C+D+E+F): ₹ 7,775.50
 """
 
-parser = PayoutParser()
+parser = SwiggyPayoutParser()
 result = parser.parse_payout_text(raw_drawer_text)
 print(result)
 ```
 
-### 2. Debugging Reporting Column Indexing or Text Matrix (No browser needed)
+### 2. Debugging Swiggy Irregular Cycle Date Matcher (No browser needed)
 ```python
 from datetime import datetime
-from scrapers.zomato.reporting_parser import ReportingParser
+from scrapers.swiggy.payout_scraper import SwiggyPayoutScraper
 
-headers = ["Metric", "Trend", "Week 33\n10 - 16 Aug 2026", "Week 34\n17 - 23 Aug 2026"]
-parser = ReportingParser()
-col_idx = parser.find_target_column_index(
-    headers,
-    start_date=datetime(2026, 8, 17),
-    end_date=datetime(2026, 8, 23),
-    date_label="17 - 23 Aug'26"
-)
-print("Target column index:", col_idx) # Expected: 3
+cards = [
+    {"label": "23 Aug - 31 Aug", "start": datetime(2026, 8, 23), "end": datetime(2026, 8, 31)},
+    {"label": "16 Aug - 22 Aug", "start": datetime(2026, 8, 16), "end": datetime(2026, 8, 22)},
+    {"label": "09 Aug - 15 Aug", "start": datetime(2026, 8, 9), "end": datetime(2026, 8, 15)},
+]
+target_start = datetime(2026, 8, 24)
+target_end = datetime(2026, 8, 30)
+
+matched_card = SwiggyPayoutScraper.find_best_matching_cycle(cards, target_start, target_end)
+print("Best match:", matched_card["label"]) # Expected: 23 Aug - 31 Aug
 ```
 
-### 3. Debugging Outlet Selection (In Browser)
+### 3. Debugging Swiggy Business Reports Performance Parser (No browser needed)
 ```python
+from scrapers.swiggy.performance_parser import SwiggyPerformanceParser
+
+raw_funnel_text = """
+Operations:
+Online availability: 98.50%
+Kitchen Prep Time: 12 mins
+Funnel:
+Impressions: 14,500
+Menu opens: 1,885 (13.00%)
+Cart builds: 45.00%
+Orders placed: 32.00%
+Sales:
+Restaurant Cancelled Orders: 1
+"""
+
+parser = SwiggyPerformanceParser()
+result = parser.parse_performance_text(raw_funnel_text)
+print(result)
+```
+
+### 4. Running Full Swiggy Extraction in Browser
+```python
+from datetime import datetime
 from scrapers.browser_manager import BrowserManager
-from scrapers.zomato.outlet_selector import OutletSelector
-from config import ZOMATO_REPORTS_URL
+from scrapers.swiggy import SwiggyScraper
 
 with BrowserManager(headless=False) as bm:
     page = bm.get_page()
-    page.goto(ZOMATO_REPORTS_URL)
-    selector = OutletSelector(page)
-    success = selector.select_outlet(target_name_or_id="22663260")
-    print("Outlet selected:", success)
-```
-
-### 4. Running Reporting Only or Payout Only
-```python
-from datetime import datetime
-from scrapers.browser_manager import BrowserManager
-from scrapers.zomato import ZomatoScraper
-
-with BrowserManager(headless=False) as bm:
-    page = bm.get_page()
-    scraper = ZomatoScraper(page)
+    scraper = SwiggyScraper(page)
     
-    # Run only reporting
-    rep_data = scraper.navigate_and_extract_reporting_tab(
-        start_date=datetime(2026, 8, 17),
-        end_date=datetime(2026, 8, 23),
-        restaurant_id="22663260"
+    data = scraper.scrape_all(
+        start_date=datetime(2026, 8, 24),
+        end_date=datetime(2026, 8, 30),
+        restaurant_id="1394282"
     )
-    print("Reporting data:", rep_data)
+    print("Swiggy extracted data:", data)
 ```
-
----
-
-## 7. Adding New Metrics / Modifying Steps
-
-1. **Adding a Reporting Table Metric**:
-   - Update `ReportingParser.extract_metrics_from_rows()` or `ReportingParser.parse_reporting_text_matrix()` in `scrapers/zomato/reporting_parser.py`.
-   - No changes needed in Payouts, Outlet Selector, or Auth.
-2. **Adding a Payout Drawer Field**:
-   - Update `PayoutParser.parse_payout_text()` in `scrapers/zomato/payout_parser.py`.
-   - No changes needed in Reporting, Outlet Selector, or Auth.
-3. **Updating Outlet Modal Selectors**:
-   - Modify `OutletSelector` in `scrapers/zomato/outlet_selector.py`.

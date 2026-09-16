@@ -98,7 +98,7 @@ class GoogleSheetsReportGenerator:
 
     def generate_report(
         self,
-        zomato_metrics: PlatformMetrics,
+        zomato_metrics: Optional[PlatformMetrics] = None,
         swiggy_metrics: Optional[PlatformMetrics] = None,
         restaurant_name: str = DEFAULT_RESTAURANT_NAME,
         restaurant_id: str = DEFAULT_RESTAURANT_ID,
@@ -133,78 +133,115 @@ class GoogleSheetsReportGenerator:
                 v = v * 100.0
             return f"{v:.2f}%"
 
+        def fmt_int(val: Any) -> Any:
+            """Formats numeric values as rounded integers with no decimal places."""
+            if val is None or val == "":
+                return ""
+            try:
+                v = float(val)
+                return int(round(v))
+            except (ValueError, TypeError):
+                return val
+
+        has_z = zomato_metrics is not None
+        has_s = swiggy_metrics is not None
+        zm = zomato_metrics or PlatformMetrics()
+        sm = swiggy_metrics or PlatformMetrics()
+
         # Calculate Z+S combined metrics
-        if swiggy_metrics:
-            zs_orders = zomato_metrics.orders + swiggy_metrics.orders
-            zs_subtotal = zomato_metrics.subtotal + swiggy_metrics.subtotal
-            zs_total_discount = zomato_metrics.total_discount + swiggy_metrics.total_discount
+        if has_z and has_s:
+            zs_orders = zm.orders + sm.orders
+            zs_subtotal = round(zm.subtotal + sm.subtotal, 2)
+            zs_total_discount = round(zm.total_discount + sm.total_discount, 2)
             zs_sales_after_discount = round(zs_subtotal - zs_total_discount, 2)
             zs_net_order_value = round(zs_sales_after_discount / zs_orders, 2) if zs_orders > 0 else 0.0
-            zs_packaging = zomato_metrics.packaging_charges + swiggy_metrics.packaging_charges
-            zs_commission = zomato_metrics.commission + swiggy_metrics.commission
-            zs_ads = zomato_metrics.ads + swiggy_metrics.ads
-            zs_cash_in_bank = zomato_metrics.cash_in_bank + swiggy_metrics.cash_in_bank
+            zs_packaging = round(zm.packaging_charges + sm.packaging_charges, 2)
+            zs_commission = round(zm.commission + sm.commission, 2)
+            zs_ads = round(zm.ads + sm.ads, 2)
+            zs_cash_in_bank = round(zm.cash_in_bank + sm.cash_in_bank, 2)
             zs_discount_pct = fmt_pct((zs_total_discount / zs_subtotal * 100) if zs_subtotal > 0 else 0.0)
             zs_commission_pct = fmt_pct((zs_commission / zs_sales_after_discount * 100) if zs_sales_after_discount > 0 else 0.0)
             zs_ads_pct = fmt_pct((zs_ads / zs_subtotal * 100) if zs_subtotal > 0 else 0.0)
             zs_payout_pct = fmt_pct((zs_cash_in_bank / zs_subtotal * 100) if zs_subtotal > 0 else 0.0)
-            zs_visibility = fmt_pct(zomato_metrics.visibility)
-            zs_kpt = round((zomato_metrics.kpt + swiggy_metrics.kpt) / 2, 1) if (zomato_metrics.kpt > 0 and swiggy_metrics.kpt > 0) else (zomato_metrics.kpt or swiggy_metrics.kpt)
-            zs_impressions = zomato_metrics.impressions + swiggy_metrics.impressions
-            zs_i2m = fmt_pct(zomato_metrics.i2m)
-            zs_menu_opens = zomato_metrics.menu_opens + swiggy_metrics.menu_opens
-            zs_c2o = fmt_pct(zomato_metrics.c2o)
-            zs_m2o = fmt_pct(zomato_metrics.m2o)
-            zs_mx_rejections = zomato_metrics.mx_rejections + swiggy_metrics.mx_rejections
+            zs_visibility = fmt_pct((zm.visibility + sm.visibility) / 2 if (zm.visibility > 0 and sm.visibility > 0) else (zm.visibility or sm.visibility))
+            zs_kpt = round((zm.kpt + sm.kpt) / 2, 1) if (zm.kpt > 0 and sm.kpt > 0) else (zm.kpt or sm.kpt)
+            zs_impressions = zm.impressions + sm.impressions
+            zs_i2m = fmt_pct((zm.i2m + sm.i2m) / 2 if (zm.i2m > 0 and sm.i2m > 0) else (zm.i2m or sm.i2m))
+            zs_menu_opens = zm.menu_opens + sm.menu_opens
+            zs_c2o = fmt_pct((zm.c2o + sm.c2o) / 2 if (zm.c2o > 0 and sm.c2o > 0) else (zm.c2o or sm.c2o))
+            zs_m2o = fmt_pct((zm.m2o + sm.m2o) / 2 if (zm.m2o > 0 and sm.m2o > 0) else (zm.m2o or sm.m2o))
+            zs_mx_rejections = zm.mx_rejections + sm.mx_rejections
+        elif has_s:
+            zs_orders = sm.orders
+            zs_subtotal = sm.subtotal
+            zs_total_discount = sm.total_discount
+            zs_sales_after_discount = sm.sales_after_discount
+            zs_net_order_value = sm.net_order_value
+            zs_packaging = sm.packaging_charges
+            zs_commission = sm.commission
+            zs_ads = sm.ads
+            zs_cash_in_bank = sm.cash_in_bank
+            zs_discount_pct = fmt_pct(sm.discount_pct)
+            zs_commission_pct = fmt_pct(sm.commission_pct)
+            zs_ads_pct = fmt_pct(sm.ads_pct)
+            zs_payout_pct = fmt_pct(sm.payout_pct)
+            zs_visibility = fmt_pct(sm.visibility)
+            zs_kpt = sm.kpt
+            zs_impressions = sm.impressions
+            zs_i2m = fmt_pct(sm.i2m)
+            zs_menu_opens = sm.menu_opens
+            zs_c2o = fmt_pct(sm.c2o)
+            zs_m2o = fmt_pct(sm.m2o)
+            zs_mx_rejections = sm.mx_rejections
         else:
-            zs_orders = zomato_metrics.orders
-            zs_subtotal = zomato_metrics.subtotal
-            zs_total_discount = zomato_metrics.total_discount
-            zs_sales_after_discount = zomato_metrics.sales_after_discount
-            zs_net_order_value = zomato_metrics.net_order_value
-            zs_packaging = zomato_metrics.packaging_charges
-            zs_commission = zomato_metrics.commission
-            zs_ads = zomato_metrics.ads
-            zs_cash_in_bank = zomato_metrics.cash_in_bank
-            zs_discount_pct = fmt_pct(zomato_metrics.discount_pct)
-            zs_commission_pct = fmt_pct(zomato_metrics.commission_pct)
-            zs_ads_pct = fmt_pct(zomato_metrics.ads_pct)
-            zs_payout_pct = fmt_pct(zomato_metrics.payout_pct)
-            zs_visibility = fmt_pct(zomato_metrics.visibility)
-            zs_kpt = zomato_metrics.kpt
-            zs_impressions = zomato_metrics.impressions
-            zs_i2m = fmt_pct(zomato_metrics.i2m)
-            zs_menu_opens = zomato_metrics.menu_opens
-            zs_c2o = fmt_pct(zomato_metrics.c2o)
-            zs_m2o = fmt_pct(zomato_metrics.m2o)
-            zs_mx_rejections = zomato_metrics.mx_rejections
+            zs_orders = zm.orders
+            zs_subtotal = zm.subtotal
+            zs_total_discount = zm.total_discount
+            zs_sales_after_discount = zm.sales_after_discount
+            zs_net_order_value = zm.net_order_value
+            zs_packaging = zm.packaging_charges
+            zs_commission = zm.commission
+            zs_ads = zm.ads
+            zs_cash_in_bank = zm.cash_in_bank
+            zs_discount_pct = fmt_pct(zm.discount_pct)
+            zs_commission_pct = fmt_pct(zm.commission_pct)
+            zs_ads_pct = fmt_pct(zm.ads_pct)
+            zs_payout_pct = fmt_pct(zm.payout_pct)
+            zs_visibility = fmt_pct(zm.visibility)
+            zs_kpt = zm.kpt
+            zs_impressions = zm.impressions
+            zs_i2m = fmt_pct(zm.i2m)
+            zs_menu_opens = zm.menu_opens
+            zs_c2o = fmt_pct(zm.c2o)
+            zs_m2o = fmt_pct(zm.m2o)
+            zs_mx_rejections = zm.mx_rejections
 
-        # Row Definitions
+        # Row Definitions (All numeric values formatted as pure integers with no decimal places)
         rows_config = [
-            {"name": "Orders", "z_val": str(zomato_metrics.orders), "zs_val": str(zs_orders), "highlight": False, "bold": False},
-            {"name": "Subtotal", "z_val": str(zomato_metrics.subtotal), "zs_val": str(zs_subtotal), "highlight": False, "bold": False},
-            {"name": "Total Discount", "z_val": str(zomato_metrics.total_discount), "zs_val": str(zs_total_discount), "highlight": False, "bold": False},
-            {"name": "Sales after discount", "z_val": str(zomato_metrics.sales_after_discount), "zs_val": str(zs_sales_after_discount), "highlight": False, "bold": False},
-            {"name": "Net order value", "z_val": str(zomato_metrics.net_order_value), "zs_val": str(zs_net_order_value), "highlight": False, "bold": False},
-            {"name": "Packaging Charges", "z_val": str(zomato_metrics.packaging_charges), "zs_val": str(zs_packaging), "highlight": False, "bold": False},
-            {"name": "Commission", "z_val": str(zomato_metrics.commission), "zs_val": str(zs_commission), "highlight": False, "bold": False},
-            {"name": "ads", "z_val": str(zomato_metrics.ads), "zs_val": str(zs_ads), "highlight": False, "bold": False},
-            {"name": "Cash in Bank", "z_val": str(zomato_metrics.cash_in_bank), "zs_val": str(zs_cash_in_bank), "highlight": True, "bold": True},
-            {"name": "Discount %", "z_val": fmt_pct(zomato_metrics.discount_pct), "zs_val": zs_discount_pct, "highlight": False, "bold": False},
-            {"name": "Commission %", "z_val": fmt_pct(zomato_metrics.commission_pct), "zs_val": zs_commission_pct, "highlight": False, "bold": False},
-            {"name": "Ads %", "z_val": fmt_pct(zomato_metrics.ads_pct), "zs_val": zs_ads_pct, "highlight": False, "bold": False},
-            {"name": "Payout %", "z_val": fmt_pct(zomato_metrics.payout_pct), "zs_val": zs_payout_pct, "highlight": True, "bold": True},
-            {"name": "Visibility", "z_val": fmt_pct(zomato_metrics.visibility), "zs_val": zs_visibility, "highlight": False, "bold": False},
-            {"name": "KPT", "z_val": str(zomato_metrics.kpt), "zs_val": str(zs_kpt), "highlight": False, "bold": False},
-            {"name": "Impressions", "z_val": str(zomato_metrics.impressions), "zs_val": str(zs_impressions), "highlight": False, "bold": False},
-            {"name": "I2M", "z_val": fmt_pct(zomato_metrics.i2m), "zs_val": zs_i2m, "highlight": False, "bold": False},
-            {"name": "Menu Opens", "z_val": str(zomato_metrics.menu_opens), "zs_val": str(zs_menu_opens), "highlight": False, "bold": False},
-            {"name": "C2O", "z_val": fmt_pct(zomato_metrics.c2o), "zs_val": zs_c2o, "highlight": False, "bold": False},
-            {"name": "M2O", "z_val": fmt_pct(zomato_metrics.m2o), "zs_val": zs_m2o, "highlight": False, "bold": True},
-            {"name": "Mx Rejections", "z_val": str(zomato_metrics.mx_rejections), "zs_val": str(zs_mx_rejections), "highlight": False, "bold": False},
+            {"name": "Orders", "z_val": fmt_int(zm.orders) if has_z else "", "s_val": fmt_int(sm.orders) if has_s else "", "zs_val": fmt_int(zs_orders), "highlight": False, "bold": False},
+            {"name": "Subtotal", "z_val": fmt_int(zm.subtotal) if has_z else "", "s_val": fmt_int(sm.subtotal) if has_s else "", "zs_val": fmt_int(zs_subtotal), "highlight": False, "bold": False},
+            {"name": "Total Discount", "z_val": fmt_int(zm.total_discount) if has_z else "", "s_val": fmt_int(sm.total_discount) if has_s else "", "zs_val": fmt_int(zs_total_discount), "highlight": False, "bold": False},
+            {"name": "Sales after discount", "z_val": fmt_int(zm.sales_after_discount) if has_z else "", "s_val": fmt_int(sm.sales_after_discount) if has_s else "", "zs_val": fmt_int(zs_sales_after_discount), "highlight": False, "bold": False},
+            {"name": "Net order value", "z_val": fmt_int(zm.net_order_value) if has_z else "", "s_val": fmt_int(sm.net_order_value) if has_s else "", "zs_val": fmt_int(zs_net_order_value), "highlight": False, "bold": False},
+            {"name": "Packaging Charges", "z_val": fmt_int(zm.packaging_charges) if has_z else "", "s_val": fmt_int(sm.packaging_charges) if has_s else "", "zs_val": fmt_int(zs_packaging), "highlight": False, "bold": False},
+            {"name": "Commission", "z_val": fmt_int(zm.commission) if has_z else "", "s_val": fmt_int(sm.commission) if has_s else "", "zs_val": fmt_int(zs_commission), "highlight": False, "bold": False},
+            {"name": "ads", "z_val": fmt_int(zm.ads) if has_z else "", "s_val": fmt_int(sm.ads) if has_s else "", "zs_val": fmt_int(zs_ads), "highlight": False, "bold": False},
+            {"name": "Cash in Bank", "z_val": fmt_int(zm.cash_in_bank) if has_z else "", "s_val": fmt_int(sm.cash_in_bank) if has_s else "", "zs_val": fmt_int(zs_cash_in_bank), "highlight": True, "bold": True},
+            {"name": "Discount %", "z_val": fmt_pct(zm.discount_pct) if has_z else "", "s_val": fmt_pct(sm.discount_pct) if has_s else "", "zs_val": zs_discount_pct, "highlight": False, "bold": False},
+            {"name": "Commission %", "z_val": fmt_pct(zm.commission_pct) if has_z else "", "s_val": fmt_pct(sm.commission_pct) if has_s else "", "zs_val": zs_commission_pct, "highlight": False, "bold": False},
+            {"name": "Ads %", "z_val": fmt_pct(zm.ads_pct) if has_z else "", "s_val": fmt_pct(sm.ads_pct) if has_s else "", "zs_val": zs_ads_pct, "highlight": False, "bold": False},
+            {"name": "Payout %", "z_val": fmt_pct(zm.payout_pct) if has_z else "", "s_val": fmt_pct(sm.payout_pct) if has_s else "", "zs_val": zs_payout_pct, "highlight": True, "bold": True},
+            {"name": "Visibility", "z_val": fmt_pct(zm.visibility) if has_z else "", "s_val": fmt_pct(sm.visibility) if has_s else "", "zs_val": zs_visibility, "highlight": False, "bold": False},
+            {"name": "KPT", "z_val": fmt_int(zm.kpt) if has_z else "", "s_val": fmt_int(sm.kpt) if has_s else "", "zs_val": fmt_int(zs_kpt), "highlight": False, "bold": False},
+            {"name": "Impressions", "z_val": fmt_int(zm.impressions) if has_z else "", "s_val": fmt_int(sm.impressions) if has_s else "", "zs_val": fmt_int(zs_impressions), "highlight": False, "bold": False},
+            {"name": "I2M", "z_val": fmt_pct(zm.i2m) if has_z else "", "s_val": fmt_pct(sm.i2m) if has_s else "", "zs_val": zs_i2m, "highlight": False, "bold": False},
+            {"name": "Menu Opens", "z_val": fmt_int(zm.menu_opens) if has_z else "", "s_val": fmt_int(sm.menu_opens) if has_s else "", "zs_val": fmt_int(zs_menu_opens), "highlight": False, "bold": False},
+            {"name": "C2O", "z_val": fmt_pct(zm.c2o) if has_z else "", "s_val": fmt_pct(sm.c2o) if has_s else "", "zs_val": zs_c2o, "highlight": False, "bold": False},
+            {"name": "M2O", "z_val": fmt_pct(zm.m2o) if has_z else "", "s_val": fmt_pct(sm.m2o) if has_s else "", "zs_val": zs_m2o, "highlight": False, "bold": True},
+            {"name": "Mx Rejections", "z_val": fmt_int(zm.mx_rejections) if has_z else "", "s_val": fmt_int(sm.mx_rejections) if has_s else "", "zs_val": fmt_int(zs_mx_rejections), "highlight": False, "bold": False},
         ]
 
-        title_text = f"{restaurant_name} (ZID: {restaurant_id})"
+        title_text = f"{restaurant_name} (Id: {restaurant_id})"
 
         # Prepare grid data for batch update
         table_values = [
@@ -215,10 +252,7 @@ class GoogleSheetsReportGenerator:
         ]
 
         for item in rows_config:
-            swiggy_val = ""
-            if swiggy_metrics:
-                swiggy_val = str(getattr(swiggy_metrics, item["name"].lower().replace(" ", "_"), ""))
-            table_values.append([item["name"], item["z_val"], swiggy_val, item["zs_val"]])
+            table_values.append([item["name"], item["z_val"], item["s_val"], item["zs_val"]])
 
         # Write cell values using gspread update
         def col_idx_to_a1(c_idx: int) -> str:

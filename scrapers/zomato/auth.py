@@ -45,3 +45,31 @@ class ZomatoAuth:
             return False
         except Exception:
             return False
+
+    def wait_for_login(self, timeout_sec: int = 90) -> bool:
+        """
+        Actively monitors and waits up to `timeout_sec` seconds for user to complete login in the opened browser.
+        Returns True once an authenticated dashboard or partner page is detected.
+        """
+        if not self.page:
+            return False
+        import time
+        print(f"[*] Waiting up to {timeout_sec}s for Zomato Google login in opened browser...")
+        start = time.time()
+        while time.time() - start < timeout_sec:
+            try:
+                if self.page.is_closed():
+                    return False
+                current_url = self.page.url.lower()
+                if "login" not in current_url and "signin" not in current_url:
+                    if self.check_login_status():
+                        print("[✓] Zomato session detected active!")
+                        return True
+            except Exception:
+                pass
+            try:
+                self.page.wait_for_timeout(2500)
+            except Exception:
+                break
+        return self.check_login_status()
+
